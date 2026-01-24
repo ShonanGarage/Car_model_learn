@@ -1,0 +1,41 @@
+camera:
+  device_number: 0
+  show_ui: false
+  img_w: 320
+  img_h: 240
+  fps: 10
+  jpeg_quality: 85
+
+servo:
+  gpio: 18
+  center_us: 1500
+  min_us: 1000
+  max_us: 2000
+  frequency: 100
+
+sonar:
+  center:
+    trig_gpio: 23
+    echo_gpio: 24
+  front_left:
+    trig_gpio: 25
+    echo_gpio: 8
+  front_right:
+    trig_gpio: 7
+    echo_gpio: 1
+  rear_left:
+    trig_gpio: 12
+    echo_gpio: 16
+  rear_right:
+    trig_gpio: 20
+    echo_gpio: 21
+
+throttle:
+  gpio: 19
+  fixed_us: 1600
+  frequency: 100
+
+sonar_timeout_s: 0.03
+sonar_inter_gap_s: 0.008
+out_dir: null # Will be calculated if null
+course_id: "1"
