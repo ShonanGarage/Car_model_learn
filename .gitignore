@@ -1,2 +1,5 @@
-images/
+images/**/*.jpg
+images/**/*.jpeg
 *.jpg
+*.jpeg
+__pycache__/
