@@ -32,8 +32,12 @@ sonar:
 
 throttle:
   gpio: 19
-  fixed_us: 1600
+  fixed_us: 1800
+  back_us: 1200
   frequency: 100
+  ramp_forward_ratio: 0.2
+  ramp_backward_ratio: 0.2
+  ramp_stop_ratio: 0.4
 
 sonar_timeout_s: 0.03
 sonar_inter_gap_s: 0.008

@@ -15,10 +15,10 @@ def handle_user_input(
         if cmd == 'q':
             should_quit = True
         elif cmd == 'w':
-            container.drive_service.move_forward()
+            container.drive_service.ramp_forward()
             last_cmd_time = time.time()
         elif cmd == 's':
-            container.drive_service.move_backward()
+            container.drive_service.ramp_backward()
             last_cmd_time = time.time()
         elif cmd == 'x':
             container.drive_service.stop()
@@ -32,6 +32,6 @@ def handle_user_input(
             container.drive_service.steer_right(step=100)
 
     if time.time() - last_cmd_time > timeout_s:
-        container.drive_service.stop()
+        container.drive_service.ramp_stop()
 
     return last_cmd_time, should_quit

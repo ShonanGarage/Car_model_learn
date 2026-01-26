@@ -32,8 +32,11 @@ class ServoModule:
 class DCModule:
     gpio: int = 13
     fixed_us: int = 1600
-    back_us: int = 1400
+    back_us: int = 1300
     frequency: int = 50
+    ramp_forward_ratio: float = 0.35
+    ramp_backward_ratio: float = 0.35
+    ramp_stop_ratio: float = 0.4
 
 @dataclass
 class Settings:

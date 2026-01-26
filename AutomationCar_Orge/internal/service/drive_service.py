@@ -112,6 +112,30 @@ class DriveService:
         self.dc_gateway.set_throttle(self.control.throttle)
         self._log_telemetry()
 
+    def ramp_forward(self, ratio: float | None = None) -> None:
+        if ratio is None:
+            ratio = self.settings.throttle.ramp_forward_ratio
+        new_us = self._ease_throttle(self.settings.throttle.fixed_us, ratio)
+        self.control.update_throttle(new_us, self.distances)
+        self.dc_gateway.set_throttle(self.control.throttle)
+        self._log_telemetry()
+
+    def ramp_backward(self, ratio: float | None = None) -> None:
+        if ratio is None:
+            ratio = self.settings.throttle.ramp_backward_ratio
+        new_us = self._ease_throttle(self.settings.throttle.back_us, ratio)
+        self.control.update_throttle(new_us, self.distances)
+        self.dc_gateway.set_throttle(self.control.throttle)
+        self._log_telemetry()
+
+    def ramp_stop(self, ratio: float | None = None) -> None:
+        if ratio is None:
+            ratio = self.settings.throttle.ramp_stop_ratio
+        new_us = self._ease_throttle(1500, ratio)
+        self.control.update_throttle(new_us, self.distances)
+        self.dc_gateway.set_throttle(self.control.throttle)
+        self._log_telemetry()
+
     def stop(self) -> None:
         self.control.stop()
         self.dc_gateway.set_throttle(self.control.throttle)
@@ -120,3 +144,12 @@ class DriveService:
 
     def _clamp(self, v: int, lo: int, hi: int) -> int:
         return max(lo, min(hi, v))
+
+    def _ease_throttle(self, target_us: int, ratio: float) -> int:
+        current_us = self.control.throttle.value
+        if current_us == 0:
+            current_us = 1500
+        new_us = int(round(current_us + (target_us - current_us) * ratio))
+        if abs(new_us - target_us) < 2:
+            new_us = target_us
+        return self._clamp(new_us, 1000, 2000)
