@@ -37,5 +37,5 @@ throttle:
 
 sonar_timeout_s: 0.03
 sonar_inter_gap_s: 0.008
-out_dir: null # Will be calculated if null
+out_dir: learning_data # Will be calculated if null
 course_id: "1"
