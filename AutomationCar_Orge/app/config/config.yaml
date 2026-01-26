@@ -32,14 +32,17 @@ sonar:
 
 throttle:
   gpio: 19
-  fixed_us: 1800
-  back_us: 1200
+  fixed_us: 1650
+  back_us: 1350
   frequency: 100
-  ramp_forward_ratio: 0.2
-  ramp_backward_ratio: 0.2
-  ramp_stop_ratio: 0.4
+  ramp_forward_ratio: 0.03
+  ramp_backward_ratio: 0.03
+  ramp_stop_ratio: 0.95
 
 sonar_timeout_s: 0.03
 sonar_inter_gap_s: 0.008
-out_dir: learning_data # Will be calculated if null
+emergency_stop_threshold_m: 0.1
+blocked_threshold_m: 0.2
+control_loop_sleep_s: 0.02
+out_dir: "../learning_data"
 course_id: "1"

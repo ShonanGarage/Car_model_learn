@@ -18,43 +18,77 @@ class DriveControl:
             state=DriveState.READY
         )
 
-    def update_state(self, distances: List[float]) -> None:
+    def update_state(
+        self,
+        distances: List[float],
+        emergency_stop_threshold_m: float | None = None,
+        blocked_threshold_m: float | None = None,
+    ) -> None:
         """Update state based on sensor data."""
-        self.state = DriveState.from_distances(distances, self.state)
+        self.state = DriveState.from_distances(
+            distances,
+            self.state,
+            emergency_stop_threshold_m=emergency_stop_threshold_m,
+            blocked_threshold_m=blocked_threshold_m,
+        )
+        if self.state == DriveState.EMERGENCY_STOP:
+            self.stop()
+            return
         # 進行方向がブロックされたなら止める
-        if self.state == DriveState.BLOCKED_BOTH:
+        # NOTE: この条件分岐は厳しすぎるので緩和
+        if self.state == DriveState.BLOCKED_FRONT and self.throttle.is_forward():
             self.stop()
-        elif self.state == DriveState.BLOCKED_FRONT and self.throttle.is_forward():
-            self.stop()
-        elif self.state == DriveState.BLOCKED_REAR and self.throttle.is_backward():
-            self.stop()
+        # elif self.state == DriveState.BLOCKED_BOTH:
+        #     self.stop()
+        # elif self.state == DriveState.BLOCKED_REAR and self.throttle.is_backward():
+        #     self.stop()
 
-    def update_throttle(self, us: int, distances: List[float]) -> None:
+    def update_throttle(
+        self,
+        us: int,
+        distances: List[float],
+        emergency_stop_threshold_m: float | None = None,
+        blocked_threshold_m: float | None = None,
+    ) -> None:
         """Update throttle with validation against current state.
         Allows movement if the direction is clear.
         """
         # 走行前に障害物チェック
-        self.update_state(distances)
+        self.update_state(
+            distances,
+            emergency_stop_threshold_m=emergency_stop_threshold_m,
+            blocked_threshold_m=blocked_threshold_m,
+        )
+        if self.state == DriveState.EMERGENCY_STOP:
+            self.stop()
+            return
         
         new_throttle = Throttle(us)
         
         # ブロック状態に応じたチェック
-        if self.state == DriveState.BLOCKED_BOTH and not new_throttle.is_stop():
-            self.stop()
-            return
+        # NOTE: この条件分岐は厳しすぎるので緩和
+        # if self.state == DriveState.BLOCKED_BOTH and not new_throttle.is_stop():
+        #     self.stop()
+        #     return
         
         if self.state == DriveState.BLOCKED_FRONT and new_throttle.is_forward():
             self.stop()
             return
-            
-        if self.state == DriveState.BLOCKED_REAR and new_throttle.is_backward():
-            self.stop()
-            return
+
+        # NOTE: この条件分岐は厳しすぎるので緩和
+        # if self.state == DriveState.BLOCKED_REAR and new_throttle.is_backward():
+        #     self.stop()
+        #     return
 
         self.throttle = new_throttle
         if not self.throttle.is_stop():
             self.state = DriveState.MOVING
-        elif self.state not in [DriveState.BLOCKED_FRONT, DriveState.BLOCKED_REAR, DriveState.BLOCKED_BOTH]:
+        elif self.state not in [
+            DriveState.BLOCKED_FRONT,
+            DriveState.BLOCKED_REAR,
+            DriveState.BLOCKED_BOTH,
+            DriveState.EMERGENCY_STOP,
+        ]:
             self.state = DriveState.READY
 
     def update_steer(self, us: int) -> None:
@@ -62,5 +96,10 @@ class DriveControl:
 
     def stop(self) -> None:
         self.throttle = Throttle.stop()
-        if self.state not in [DriveState.BLOCKED_FRONT, DriveState.BLOCKED_REAR, DriveState.BLOCKED_BOTH]:
+        if self.state not in [
+            DriveState.BLOCKED_FRONT,
+            DriveState.BLOCKED_REAR,
+            DriveState.BLOCKED_BOTH,
+            DriveState.EMERGENCY_STOP,
+        ]:
             self.state = DriveState.READY

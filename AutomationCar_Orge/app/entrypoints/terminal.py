@@ -48,8 +48,8 @@ def main() -> None:
                 distances=container.drive_service.distances,
                 steer_us=container.drive_service.current_steer_us,
             )
-
-            time.sleep(0.02)  # ~50Hz loop (much smoother)
+            
+            time.sleep(container.settings.control_loop_sleep_s) # ~50Hz loop (much smoother)
     finally:
         container.drive_service.stop()
         container.camera_gateway.release()

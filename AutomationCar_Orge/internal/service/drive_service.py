@@ -52,7 +52,13 @@ class DriveService:
         self.distances = self.sonar_gateway.read_distances_m()
         self.ok, self.frame = self.camera_gateway.capture_frame()
         # Domain Entity updates its internal state based on sensor data
-        self.control.update_state(self.distances)
+        self.control.update_state(
+            self.distances,
+            emergency_stop_threshold_m=self.settings.emergency_stop_threshold_m,
+            blocked_threshold_m=self.settings.blocked_threshold_m,
+        )
+        if self._emergency_stop_if_needed():
+            return
         
         # ゲートウェイへの通知が必要な場合（例：BLOCKEDで停止指令を送るなど）
         # DriveControl.update_state内ですでにstop()が呼ばれているため、スロットルを更新
@@ -103,36 +109,71 @@ class DriveService:
         self._log_telemetry()
 
     def move_forward(self) -> None:
-        self.control.update_throttle(self.settings.throttle.fixed_us, self.distances)
+        if self._emergency_stop_if_needed():
+            return
+        self.control.update_throttle(
+            self.settings.throttle.fixed_us,
+            self.distances,
+            emergency_stop_threshold_m=self.settings.emergency_stop_threshold_m,
+            blocked_threshold_m=self.settings.blocked_threshold_m,
+        )
         self.dc_gateway.set_throttle(self.control.throttle)
         self._log_telemetry()
 
     def move_backward(self) -> None:
-        self.control.update_throttle(self.settings.throttle.back_us, self.distances)
+        if self._emergency_stop_if_needed():
+            return
+        self.control.update_throttle(
+            self.settings.throttle.back_us,
+            self.distances,
+            emergency_stop_threshold_m=self.settings.emergency_stop_threshold_m,
+            blocked_threshold_m=self.settings.blocked_threshold_m,
+        )
         self.dc_gateway.set_throttle(self.control.throttle)
         self._log_telemetry()
 
     def ramp_forward(self, ratio: float | None = None) -> None:
+        if self._emergency_stop_if_needed():
+            return
         if ratio is None:
             ratio = self.settings.throttle.ramp_forward_ratio
         new_us = self._ease_throttle(self.settings.throttle.fixed_us, ratio)
-        self.control.update_throttle(new_us, self.distances)
+        self.control.update_throttle(
+            new_us,
+            self.distances,
+            emergency_stop_threshold_m=self.settings.emergency_stop_threshold_m,
+            blocked_threshold_m=self.settings.blocked_threshold_m,
+        )
         self.dc_gateway.set_throttle(self.control.throttle)
         self._log_telemetry()
 
     def ramp_backward(self, ratio: float | None = None) -> None:
+        if self._emergency_stop_if_needed():
+            return
         if ratio is None:
             ratio = self.settings.throttle.ramp_backward_ratio
         new_us = self._ease_throttle(self.settings.throttle.back_us, ratio)
-        self.control.update_throttle(new_us, self.distances)
+        self.control.update_throttle(
+            new_us,
+            self.distances,
+            emergency_stop_threshold_m=self.settings.emergency_stop_threshold_m,
+            blocked_threshold_m=self.settings.blocked_threshold_m,
+        )
         self.dc_gateway.set_throttle(self.control.throttle)
         self._log_telemetry()
 
     def ramp_stop(self, ratio: float | None = None) -> None:
+        if self._emergency_stop_if_needed():
+            return
         if ratio is None:
             ratio = self.settings.throttle.ramp_stop_ratio
-        new_us = self._ease_throttle(1500, ratio)
-        self.control.update_throttle(new_us, self.distances)
+        new_us = self._ease_throttle(0, ratio)
+        self.control.update_throttle(
+            new_us,
+            self.distances,
+            emergency_stop_threshold_m=self.settings.emergency_stop_threshold_m,
+            blocked_threshold_m=self.settings.blocked_threshold_m,
+        )
         self.dc_gateway.set_throttle(self.control.throttle)
         self._log_telemetry()
 
@@ -152,4 +193,13 @@ class DriveService:
         new_us = int(round(current_us + (target_us - current_us) * ratio))
         if abs(new_us - target_us) < 2:
             new_us = target_us
-        return self._clamp(new_us, 1000, 2000)
+        lo = 0 if target_us == 0 else 1000
+        return self._clamp(new_us, lo, 2000)
+
+    def _emergency_stop_if_needed(self) -> bool:
+        if self.control.state != DriveState.EMERGENCY_STOP:
+            return False
+        self.control.stop()
+        self.dc_gateway.set_throttle(self.control.throttle)
+        self._log_telemetry()
+        return True

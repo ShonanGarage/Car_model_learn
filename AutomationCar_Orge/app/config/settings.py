@@ -53,7 +53,10 @@ class Settings:
     throttle: DCModule = field(default_factory=DCModule)
     sonar_timeout_s: float = 0.03
     sonar_inter_gap_s: float = 0.008
-    out_dir: str = field(default_factory=lambda: str((Path(__file__).resolve().parents[3] / "learning_data").resolve()))
+    emergency_stop_threshold_m: float = 0.1
+    blocked_threshold_m: float = 0.2
+    control_loop_sleep_s: float = 0.02
+    out_dir: str = field(default_factory=lambda: str((Path(__file__).resolve().parents[3].parent.parent / "learning_data").resolve()))
     course_id: str = "default_course"
 
 
