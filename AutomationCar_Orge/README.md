@@ -24,27 +24,20 @@ pip install opencv-python lgpio
 
 ※ 実機以外で実行する場合、`lgpio` や `picamera2` の代わりにダミー実装や標準ビデオ入力が使用されます。
 
-## 実行方法
+## 実行方法（エントリポイント別）
 
-1. **メインアプリケーションの起動**
+1. **ターミナル操作の起動**
 
    プロジェクトルートディレクトリ（`code/data_assemble/`）で実行します。
 
    ```bash
    export PYTHONPATH=$PYTHONPATH:$(pwd)
-   python3 app/main.py [コースID]
+   python3 app/entrypoints/terminal.py
    ```
 
-   - コースIDは任意です（デフォルト: `default_course`）。
    - 実行すると、操作方法（W/A/S/Dなど）がターミナルに表示されます。
 
-2. **データ収集**
-
-   走行中に自動的に `dataset/` ディレクトリ（設定による）へ以下のデータが保存されます。
-   - `telemetry.jsonl`: 各フレームのタイムスタンプ、スロットル、ステアリング、距離データ
-   - `*.jpg`: カメラからキャプチャされた画像
-
-## 操作方法
+# 操作方法
 
 - **W**: 前進 (Forward)
 - **S**: 後退 (Backward)
@@ -52,6 +45,26 @@ pip install opencv-python lgpio
 - **D**: 右転舵
 - **X**: 停止
 - **Q**: プログラム終了
+
+
+2. **WebSocket操作の起動**
+
+   ```bash
+   export PYTHONPATH=$PYTHONPATH:$(pwd)
+   python3 app/entrypoints/websocket.py
+   ```
+
+   - WebSocketエンドポイント: `ws://<host>:8000/ws`
+   - 受信コマンドは `action` に enum 文字列（例: `MOVE_FORWARD`）を指定します。
+   - 送信は `telemetry`（状態/距離/操舵/スロットル/画像 base64）を定期配信します。
+   - 実行には `fastapi` と `uvicorn` が必要です。
+
+## データ収集
+
+   走行中に自動的に `dataset/` ディレクトリ（設定による）へ以下のデータが保存されます。
+   - `telemetry.jsonl`: 各フレームのタイムスタンプ、スロットル、ステアリング、距離データ
+   - `*.jpg`: カメラからキャプチャされた画像
+
 
 ## ユニットテスト
 
