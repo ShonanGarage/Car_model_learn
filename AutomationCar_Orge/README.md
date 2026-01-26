@@ -26,13 +26,13 @@ pip install opencv-python lgpio
 
 ## 実行方法
 
-1. **メインアプリケーションの起動**
+1. **ターミナル操作の起動**
 
    プロジェクトルートディレクトリ（`code/data_assemble/`）で実行します。
 
    ```bash
    export PYTHONPATH=$PYTHONPATH:$(pwd)
-   python3 app/main.py [コースID]
+   python3 app/entrypoints/terminal.py [コースID]
    ```
 
    - コースIDは任意です（デフォルト: `default_course`）。
