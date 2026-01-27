@@ -9,6 +9,14 @@ class DataConfig:
     jsonl_path: Path = Path("AutomationCar_Orge/learning_data/log.jsonl")
     images_dir: Path = Path("AutomationCar_Orge/learning_data/images")
     csv_path: Path = Path("machine_learning/data/dataset_k1.csv")
+    drive_state_order: tuple[str, ...] = (
+        "READY",
+        "MOVING",
+        "BLOCKED_FRONT",
+        "BLOCKED_REAR",
+        "BLOCKED_BOTH",
+        "EMERGENCY_STOP",
+    )
     k: int = 1
     val_fraction: float = 0.2
     seed: int = 42

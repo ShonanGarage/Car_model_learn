@@ -246,17 +246,29 @@ def _maybe_ffill_sonar_in_rows(rows: list[dict[str, str]]) -> None:
                 last[col] = v
 
 
-def _one_hot(states: Sequence[str]) -> tuple[np.ndarray, list[str]]:
-    unique = sorted(set(states))
-    index = {s: i for i, s in enumerate(unique)}
-    mat = np.zeros((len(states), len(unique)), dtype=np.float32)
+def _one_hot_with_fixed_order(
+    states: Sequence[str],
+    *,
+    known_order: Sequence[str],
+) -> tuple[np.ndarray, list[str]]:
+    drive_states = list(known_order)
+    index = {s: i for i, s in enumerate(drive_states)}
+
+    unknown = sorted({s for s in states if s not in index})
+    if unknown:
+        print(f"[dataset] unknown drive_state values: {unknown}")
+
+    mat = np.zeros((len(states), len(drive_states)), dtype=np.float32)
     for row, s in enumerate(states):
-        mat[row, index[s]] = 1.0
-    return mat, unique
+        idx = index.get(s)
+        if idx is not None:
+            mat[row, idx] = 1.0
+    return mat, drive_states
 
 
 def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     """CSVから学習用の配列と正規化統計量を作る。"""
+    cfg = Config()
     csv_path = Path(csv_path)
     rows = _load_csv_rows(csv_path)
     rows = _sort_rows_by_timestamp(rows)
@@ -282,7 +294,10 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     if train_mask.sum() == 0 or val_mask.sum() == 0:
         raise ValueError("split列に train/val が十分に含まれていません。CSVを作り直してください。")
 
-    drive_one_hot, drive_states = _one_hot(drive_state_t)
+    drive_one_hot, drive_states = _one_hot_with_fixed_order(
+        drive_state_t,
+        known_order=cfg.data.drive_state_order,
+    )
 
     numeric = np.concatenate(
         [
