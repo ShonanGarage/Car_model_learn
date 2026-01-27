@@ -102,3 +102,20 @@
 
 - **走行状態**（`drive_state_t`）
     - one-hotエンコーディング（＝正規化は不要）
+
+---
+
+1. まずCSVを作る
+
+```bash
+python3 -m machine_learning.dataset
+```
+
+2. CSVを使って学習する
+
+```bash
+python3 -m machine_learning.train
+```
+
+チェックポイント保存先（デフォルト）:
+- `machine_learning/checkpoints/last.pt`
