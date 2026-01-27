@@ -1,7 +1,5 @@
 images/**/*.jpg
 images/**/*.jpeg
-*.jpg
-*.jpeg
 __pycache__/
 .DS_Store
 *.xcuserstate

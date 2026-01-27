@@ -14,6 +14,8 @@ final class RemoteControlViewModel: ObservableObject {
     
     private var holdTimer: AnyCancellable?
     private let webSocketService: WebSocketService
+    private var lastVector: CGSize = .zero
+    private var lastStepSent: Int? = nil
     
     // スティックの設定
     let stickRadius: CGFloat = 60
@@ -34,8 +36,13 @@ final class RemoteControlViewModel: ObservableObject {
     func handleDragChanged(_ translation: CGSize) {
         // 半径内にクランプ
         let vector = clamp(translation, maxRadius: baseRadius - stickRadius)
+        lastVector = vector
         
         let newCommand = direction(for: vector)
+        if newCommand == currentCommand {
+            sendSteerUpdateIfNeeded(for: newCommand)
+            return
+        }
         updateCommand(newCommand)
     }
     
@@ -71,12 +78,13 @@ final class RemoteControlViewModel: ObservableObject {
     private func updateCommand(_ newCommand: WebSocketService.WsAction) {
         guard newCommand != currentCommand else { return }
         currentCommand = newCommand
+        lastStepSent = nil
         
         holdTimer?.cancel()
         
         // 接続時のみ送信
         if webSocketService.isConnected {
-            webSocketService.send(action: newCommand, step: step(for: newCommand))
+            webSocketService.send(action: newCommand, step: step(for: newCommand, vector: lastVector))
             impact(style: .light)
             
             guard newCommand != .stop else { return }
@@ -84,18 +92,35 @@ final class RemoteControlViewModel: ObservableObject {
                 .autoconnect()
                 .sink { [weak self] _ in
                     guard let self = self, self.webSocketService.isConnected else { return }
-                    self.webSocketService.send(action: newCommand, step: self.step(for: newCommand))
+                    self.webSocketService.send(action: newCommand, step: self.step(for: newCommand, vector: self.lastVector))
                 }
         }
     }
 
-    private func step(for command: WebSocketService.WsAction) -> Int? {
+    private func step(for command: WebSocketService.WsAction, vector: CGSize) -> Int? {
         switch command {
         case .steerLeft, .steerRight:
-            return 100
+            let maxRadius = baseRadius - stickRadius
+            let mag = min(abs(vector.width), maxRadius)
+            let ratio = maxRadius <= 0 ? 0 : mag / maxRadius
+            let minStep: CGFloat = 30
+            let maxStep: CGFloat = 180
+            let step = minStep + (maxStep - minStep) * ratio
+            return Int(step.rounded())
         default:
             return nil
         }
+    }
+
+    private func sendSteerUpdateIfNeeded(for command: WebSocketService.WsAction) {
+        guard webSocketService.isConnected else { return }
+        guard command == .steerLeft || command == .steerRight else { return }
+        guard let step = step(for: command, vector: lastVector) else { return }
+        if let last = lastStepSent, abs(step - last) < 10 {
+            return
+        }
+        lastStepSent = step
+        webSocketService.send(action: command, step: step)
     }
     
     func onAppear() {
