@@ -32,7 +32,7 @@ class TrainConfig:
     num_workers: int = 0
     device: str = "auto"
     log_every: int = 20
-    checkpoint_path: Path = Path("machine_learning/checkpoints/last.pt")
+    checkpoint_path: Path = Path("machine_learning/checkpoints/ver_01.pt")
 
 
 @dataclass(frozen=True)

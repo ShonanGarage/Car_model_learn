@@ -117,5 +117,11 @@ python3 -m machine_learning.dataset
 python3 -m machine_learning.train
 ```
 
+3. 学習済みモデルで推論する
+
+```bash
+python3 -m machine_learning.predict
+```
+
 チェックポイント保存先（デフォルト）:
 - `machine_learning/checkpoints/last.pt`

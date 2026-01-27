@@ -9,6 +9,7 @@ from .dataset import (
     prepare_data_from_csv,
 )
 from .model import DrivingModel
+from .predict import predict_one
 
 __all__ = [
     "Config",
@@ -22,4 +23,5 @@ __all__ = [
     "prepare_data",
     "prepare_data_from_csv",
     "DrivingModel",
+    "predict_one",
 ]
