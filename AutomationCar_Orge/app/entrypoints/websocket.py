@@ -95,7 +95,7 @@ class WebSocketServer:
             "state": self.container.drive_service.state.name,
             "distances": self.container.drive_service.distances,
             "steer_us": self.container.drive_service.current_steer_us,
-            "throttle_us": self.container.drive_service.control.throttle.value,
+            "throttle_us": self.container.drive_service.current.throttle.value,
             "image_jpeg_b64": image_b64,
         }
 
@@ -132,7 +132,7 @@ class WebSocketServer:
         if self._broadcast_task:
             self._broadcast_task.cancel()
             self._broadcast_task = None
-        self.container.drive_service.stop()
+        self.container.drive_service.shutdown()
         self.container.camera_gateway.release()
         self.container.camera_view.stop()
         self.container.data_repository.stop()

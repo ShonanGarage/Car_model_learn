@@ -10,6 +10,7 @@ T = TypeVar("T")
 class CameraModule:
     device_number: int | str = 0
     show_ui: bool | None = None
+    use_picamera2: bool = True
     img_w: int = 320
     img_h: int = 240
     fps: int = 10 # 10fps~20fpsがおススメ
@@ -27,6 +28,7 @@ class ServoModule:
     min_us: int = 1000
     max_us: int = 2000
     frequency: int = 50
+    step_us: int = 20
 
 @dataclass
 class DCModule:
@@ -37,6 +39,15 @@ class DCModule:
     ramp_forward_ratio: float = 0.35
     ramp_backward_ratio: float = 0.35
     ramp_stop_ratio: float = 0.4
+
+@dataclass
+class TerminalControl:
+    hold_window_s: float = 0.25
+    steer_accel_step_per_s: int = 600
+    steer_max_step: int = 500
+    steer_full_time_s: float = 0.6
+    throttle_full_time_s: float = 0.6
+    throttle_grace_s: float = 0.5
 
 @dataclass
 class Settings:
@@ -51,11 +62,15 @@ class Settings:
         "rear_right": SonarModule(7, 1),
     })
     throttle: DCModule = field(default_factory=DCModule)
+    terminal: TerminalControl = field(default_factory=TerminalControl)
     sonar_timeout_s: float = 0.03
     sonar_inter_gap_s: float = 0.008
+    sonar_sweep_sleep_s: float = 0.01
+    brake_start_threshold_m: float = 0.4
     emergency_stop_threshold_m: float = 0.1
     blocked_threshold_m: float = 0.2
     control_loop_sleep_s: float = 0.02
+    log_hz: float = 20.0
     out_dir: str = field(default_factory=lambda: str((Path(__file__).resolve().parents[3].parent.parent / "learning_data").resolve()))
     course_id: str = "default_course"
 
@@ -118,3 +133,5 @@ def load_settings(yaml_path: Path | str | None = None) -> Settings:
         data.pop("out_dir", None)
 
     return from_dict(Settings, data)
+
+SETTINGS = load_settings()

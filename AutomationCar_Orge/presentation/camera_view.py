@@ -1,13 +1,13 @@
 import cv2
 from typing import Optional
-from internal.domain.entity.drive_control import DriveControl
+from internal.domain.entity.vehicle_motion import VehicleMotion
 
 class CameraView:
     def __init__(self, show_ui: bool = False):
         self.window_name = "RC Car Camera"
         self.show_ui = show_ui
 
-    def display(self, frame: Optional[object], control: DriveControl):
+    def display(self, frame: Optional[object], control: VehicleMotion):
         """Display the camera frame with control status overlay."""
         if frame is None or not self.show_ui:
             return

@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.config.settings import Settings
 
 @dataclass(frozen=True)
 class Steer:
@@ -8,6 +12,16 @@ class Steer:
         # 一般的なサーボの範囲（1000-2000）を想定
         if self.pulse_width_us < 1000 or self.pulse_width_us > 2000:
             raise ValueError(f"Invalid steer pulse width: {self.pulse_width_us}")
+
+    def set_neutral(self) -> "Steer":
+        return Steer(1500)
+
+    @classmethod
+    def from_us(cls, value: int, settings: "Settings") -> "Steer":
+        lo = settings.servo.min_us
+        hi = settings.servo.max_us
+        clamped = max(lo, min(hi, value))
+        return cls(clamped)
 
     @property
     def value(self) -> int:

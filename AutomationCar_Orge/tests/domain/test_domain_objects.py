@@ -2,7 +2,7 @@ import unittest
 from internal.domain.value_object.throttle import Throttle
 from internal.domain.value_object.steer import Steer
 from internal.domain.value_object.drive_state import DriveState
-from internal.domain.entity.drive_control import DriveControl
+from internal.domain.entity.vehicle_motion import VehicleMotion, boot_vehicle_motion_ready
 
 class TestDomainObjects(unittest.TestCase):
     def test_throttle_creation(self):
@@ -25,47 +25,47 @@ class TestDomainObjects(unittest.TestCase):
     def test_drive_state_validation(self):
         # Safe distances
         distances = [1.0, 0.5, 0.8]
-        self.assertTrue(DriveState.READY.can_transition_to_moving(distances))
+        self.assertTrue(DriveState.ready().can_transition_to_moving(distances))
         
         # Dangerous distances
         distances = [1.0, 0.1, 0.8]
-        self.assertFalse(DriveState.READY.can_transition_to_moving(distances))
-        self.assertEqual(DriveState.from_distances(distances, DriveState.READY), DriveState.BLOCKED)
+        self.assertFalse(DriveState.ready().can_transition_to_moving(distances))
+        self.assertEqual(DriveState.from_distances(distances, DriveState.ready()), DriveState.BLOCKED)
 
-    def test_drive_control_state_transition(self):
-        ctrl = DriveControl.create_default()
-        self.assertEqual(ctrl.state, DriveState.READY)
-        
+    def test_vehicle_motion_state_transition(self):
+        ctrl = boot_vehicle_motion_ready(steer=Steer(1500))
+        self.assertEqual(ctrl.state, DriveState.ready())
+
         # Transition to MOVING when safe
-        ctrl.update_throttle(1600, [1.0, 1.0])
-        self.assertEqual(ctrl.state, DriveState.MOVING)
+        ctrl = ctrl.apply([1.0, 1.0], 1600, ctrl.steer.value)
+        self.assertEqual(ctrl.state, DriveState.moving())
         self.assertEqual(ctrl.throttle.value, 1600)
-        
-        # Blocked while moving
-        ctrl.update_state([0.1, 1.0])
-        self.assertEqual(ctrl.state, DriveState.BLOCKED)
-        self.assertEqual(ctrl.throttle.value, 0)
-        
-        # Safe again
-        ctrl.update_state([1.0, 1.0])
-        self.assertEqual(ctrl.state, DriveState.READY)
 
-    def test_drive_control_backward_in_blocked(self):
-        ctrl = DriveControl.create_default()
+        # Blocked while moving
+        ctrl = ctrl.apply([0.1, 1.0], ctrl.throttle.value, ctrl.steer.value)
+        self.assertEqual(ctrl.state, DriveState.BLOCKED)
+        self.assertEqual(ctrl.throttle.value, 0)
+
+        # Safe again
+        ctrl = ctrl.apply([1.0, 1.0], ctrl.throttle.value, ctrl.steer.value)
+        self.assertEqual(ctrl.state, DriveState.ready())
+
+    def test_vehicle_motion_backward_in_blocked(self):
+        ctrl = boot_vehicle_motion_ready(steer=Steer(1500))
         # Front obstacle -> BLOCKED
-        ctrl.update_state([0.1, 1.0])
+        ctrl = ctrl.apply([0.1, 1.0], ctrl.throttle.value, ctrl.steer.value)
         self.assertEqual(ctrl.state, DriveState.BLOCKED)
         self.assertEqual(ctrl.throttle.value, 0)
-        
+
         # Try forward (fixed_us = 1600) -> Should stay BLOCKED / stop
-        ctrl.update_throttle(1600, [0.1, 1.0])
+        ctrl = ctrl.apply([0.1, 1.0], 1600, ctrl.steer.value)
         self.assertEqual(ctrl.throttle.value, 0)
         self.assertEqual(ctrl.state, DriveState.BLOCKED)
-        
+
         # Try backward (back_us = 1400) -> Should allow MOVING
-        ctrl.update_throttle(1400, [0.1, 1.0])
+        ctrl = ctrl.apply([0.1, 1.0], 1400, ctrl.steer.value)
         self.assertEqual(ctrl.throttle.value, 1400)
-        self.assertEqual(ctrl.state, DriveState.MOVING)
+        self.assertEqual(ctrl.state, DriveState.moving())
 
 if __name__ == '__main__':
     unittest.main()
