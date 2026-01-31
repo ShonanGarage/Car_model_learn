@@ -98,19 +98,19 @@
 1. まずCSVを作る
 
 ```bash
-python3 -m machine_learning.dataset
+uv run python -m machine_learning.dataset
 ```
 
 2. CSVを使って学習する
 
 ```bash
-python3 -m machine_learning.train
+uv run python -m machine_learning.train
 ```
 
 3. 学習済みモデルで推論する
 
 ```bash
-python3 -m machine_learning.predict
+uv run python -m machine_learning.predict
 ```
 
 チェックポイント保存先（デフォルト）:
