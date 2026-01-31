@@ -32,7 +32,8 @@ def predict_one(cfg: Config) -> None:
     prepared = prepare_data_from_csv(cfg.data.csv_path)
     numeric_dim = len(prepared.numeric_columns)
 
-    ckpt = _load_checkpoint(cfg.train.checkpoint_path, device=device)
+    ckpt_path = cfg.train.checkpoint_dir / "best.pt"
+    ckpt = _load_checkpoint(ckpt_path, device=device)
     model = DrivingModel(numeric_dim=numeric_dim).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()

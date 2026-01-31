@@ -5,10 +5,10 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-try:
-    from tqdm.auto import tqdm
-except Exception:  # pragma: no cover - optional dependency
-    tqdm = None  # type: ignore[assignment]
+from tqdm.auto import tqdm
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from .config import Config, DataConfig, TrainConfig
 from .dataset import DrivingDataset, prepare_data_from_csv
@@ -25,8 +25,35 @@ def _resolve_device(device: str) -> torch.device:
     return torch.device("cpu")
 
 
-def _ensure_parent(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _ensure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _save_metrics_plot(
+    checkpoint_dir: Path,
+    *,
+    epochs: list[int],
+    train_loss: list[float],
+    val_loss: list[float],
+    val_acc: list[float],
+) -> None:
+    fig, (ax_loss, ax_acc) = plt.subplots(2, 1, figsize=(8, 8), sharex=True)
+    ax_loss.plot(epochs, train_loss, label="train_loss")
+    ax_loss.plot(epochs, val_loss, label="val_loss")
+    ax_loss.set_ylabel("loss")
+    ax_loss.legend()
+    ax_loss.grid(True, alpha=0.3)
+
+    ax_acc.plot(epochs, val_acc, label="val_acc")
+    ax_acc.set_ylabel("accuracy")
+    ax_acc.set_xlabel("epoch")
+    ax_acc.legend()
+    ax_acc.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    out_path = checkpoint_dir / "metrics.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
 
 
 def _make_loaders(data_cfg: DataConfig, train_cfg: TrainConfig) -> tuple[DataLoader, DataLoader, int]:
@@ -132,7 +159,14 @@ def train(cfg: Config) -> None:
     )
 
     best_val = float("inf")
-    _ensure_parent(cfg.train.checkpoint_path)
+    checkpoint_dir = cfg.train.checkpoint_dir
+    _ensure_dir(checkpoint_dir)
+    best_path = checkpoint_dir / "best.pt"
+
+    epoch_history: list[int] = []
+    train_loss_history: list[float] = []
+    val_loss_history: list[float] = []
+    val_acc_history: list[float] = []
 
     for epoch in range(1, cfg.train.epochs + 1):
         model.train()
@@ -141,15 +175,12 @@ def train(cfg: Config) -> None:
         running_move = 0.0
         seen = 0
 
-        if tqdm is None:
-            train_iter = train_loader
-        else:
-            train_iter = tqdm(train_loader, desc=f"epoch {epoch:02d}", leave=False)
+        train_iter = tqdm(train_loader, desc=f"epoch {epoch:02d}", leave=False)
 
         for step_idx, batch in enumerate(train_iter, start=1):
             optimizer.zero_grad(set_to_none=True)
 
-            loss, steer_loss, move_loss = _step(
+            loss, move_loss = _step(
                 model,
                 batch,
                 device=device,
@@ -164,11 +195,10 @@ def train(cfg: Config) -> None:
             running_move += float(move_loss.item()) * bsz
             seen += bsz
 
-            if tqdm is not None:
-                train_iter.set_postfix(
-                    loss=f"{running_loss/seen:.4f}",
-                    move=f"{running_move/seen:.4f}",
-                )
+            train_iter.set_postfix(
+                loss=f"{running_loss/seen:.4f}",
+                move=f"{running_move/seen:.4f}",
+            )
 
             if step_idx % cfg.train.log_every == 0:
                 print(
@@ -190,6 +220,18 @@ def train(cfg: Config) -> None:
             f"steer_cls_acc={val_metrics['steer_cls_acc']:.3f}"
         )
 
+        epoch_history.append(epoch)
+        train_loss_history.append(running_loss / seen)
+        val_loss_history.append(val_metrics["loss"])
+        val_acc_history.append(val_metrics["steer_cls_acc"])
+        _save_metrics_plot(
+            checkpoint_dir,
+            epochs=epoch_history,
+            train_loss=train_loss_history,
+            val_loss=val_loss_history,
+            val_acc=val_acc_history,
+        )
+
         if val_metrics["loss"] < best_val:
             best_val = val_metrics["loss"]
             torch.save(
@@ -201,9 +243,9 @@ def train(cfg: Config) -> None:
                     "config": cfg,
                     "val_metrics": val_metrics,
                 },
-                cfg.train.checkpoint_path,
+                best_path,
             )
-            print(f"saved checkpoint: {cfg.train.checkpoint_path}")
+            print(f"saved checkpoint: {best_path}")
 
 
 def main() -> None:  # pragma: no cover - entry point
