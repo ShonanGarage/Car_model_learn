@@ -61,22 +61,17 @@ def _step(
     batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     *,
     device: torch.device,
-    steer_loss_fn: nn.Module,
     move_loss_fn: nn.Module,
-    lambda_move: float,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    image, numeric, steer_t, move_t = batch
+) -> tuple[torch.Tensor, torch.Tensor]:
+    image, numeric, _steer_t, move_t = batch
     image = image.to(device, non_blocking=True)
     numeric = numeric.to(device, non_blocking=True)
-    steer_t = steer_t.to(device, non_blocking=True)
     move_t = move_t.to(device, non_blocking=True)
 
-    steer_pred, move_logits = model(image, numeric)
-
-    steer_loss = steer_loss_fn(steer_pred, steer_t)
+    move_logits = model(image, numeric)
     move_loss = move_loss_fn(move_logits, move_t)
-    loss = steer_loss + lambda_move * move_loss
-    return loss, steer_loss.detach(), move_loss.detach()
+    loss = move_loss
+    return loss, move_loss.detach()
 
 
 def _evaluate(
@@ -84,34 +79,27 @@ def _evaluate(
     loader: DataLoader,
     *,
     device: torch.device,
-    steer_loss_fn: nn.Module,
     move_loss_fn: nn.Module,
-    lambda_move: float,
 ) -> dict[str, float]:
     model.eval()
 
     total_loss = 0.0
-    total_steer = 0.0
     total_move = 0.0
     total_correct = 0
     total_count = 0
 
     with torch.no_grad():
         for batch in loader:
-            image, numeric, steer_t, move_t = batch
+            image, numeric, _steer_t, move_t = batch
             image = image.to(device, non_blocking=True)
             numeric = numeric.to(device, non_blocking=True)
-            steer_t = steer_t.to(device, non_blocking=True)
             move_t = move_t.to(device, non_blocking=True)
 
-            steer_pred, move_logits = model(image, numeric)
-
-            steer_loss = steer_loss_fn(steer_pred, steer_t)
+            move_logits = model(image, numeric)
             move_loss = move_loss_fn(move_logits, move_t)
-            loss = steer_loss + lambda_move * move_loss
+            loss = move_loss
 
             total_loss += float(loss.item()) * len(move_t)
-            total_steer += float(steer_loss.item()) * len(move_t)
             total_move += float(move_loss.item()) * len(move_t)
 
             preds = move_logits.argmax(dim=1)
@@ -120,7 +108,6 @@ def _evaluate(
 
     return {
         "loss": total_loss / total_count,
-        "steer_mae": total_steer / total_count,
         "move_ce": total_move / total_count,
         "move_acc": total_correct / total_count,
     }
@@ -136,7 +123,6 @@ def train(cfg: Config) -> None:
 
     model = DrivingModel(numeric_dim=numeric_dim).to(device)
 
-    steer_loss_fn = nn.L1Loss()
     move_loss_fn = nn.CrossEntropyLoss()
 
     optimizer = torch.optim.AdamW(
@@ -152,7 +138,6 @@ def train(cfg: Config) -> None:
         model.train()
 
         running_loss = 0.0
-        running_steer = 0.0
         running_move = 0.0
         seen = 0
 
@@ -168,24 +153,20 @@ def train(cfg: Config) -> None:
                 model,
                 batch,
                 device=device,
-                steer_loss_fn=steer_loss_fn,
                 move_loss_fn=move_loss_fn,
-                lambda_move=cfg.train.lambda_move,
             )
             loss.backward()
             optimizer.step()
 
-            image, numeric, steer_t, move_t = batch
+            image, numeric, _steer_t, move_t = batch
             bsz = len(move_t)
             running_loss += float(loss.item()) * bsz
-            running_steer += float(steer_loss.item()) * bsz
             running_move += float(move_loss.item()) * bsz
             seen += bsz
 
             if tqdm is not None:
                 train_iter.set_postfix(
                     loss=f"{running_loss/seen:.4f}",
-                    steer=f"{running_steer/seen:.4f}",
                     move=f"{running_move/seen:.4f}",
                 )
 
@@ -193,21 +174,18 @@ def train(cfg: Config) -> None:
                 print(
                     f"epoch {epoch:02d} step {step_idx:04d} "
                     f"loss={running_loss/seen:.4f} "
-                    f"steer={running_steer/seen:.4f} move={running_move/seen:.4f}"
+                    f"move={running_move/seen:.4f}"
                 )
 
         val_metrics = _evaluate(
             model,
             val_loader,
             device=device,
-            steer_loss_fn=steer_loss_fn,
             move_loss_fn=move_loss_fn,
-            lambda_move=cfg.train.lambda_move,
         )
         print(
             f"epoch {epoch:02d} val "
             f"loss={val_metrics['loss']:.4f} "
-            f"steer_mae={val_metrics['steer_mae']:.4f} "
             f"move_ce={val_metrics['move_ce']:.4f} "
             f"move_acc={val_metrics['move_acc']:.3f}"
         )
@@ -218,6 +196,8 @@ def train(cfg: Config) -> None:
                 {
                     "model_state": model.state_dict(),
                     "numeric_dim": numeric_dim,
+                    "class_names": cfg.data.servo_class_names,
+                    "class_values": cfg.data.servo_class_us,
                     "config": cfg,
                     "val_metrics": val_metrics,
                 },

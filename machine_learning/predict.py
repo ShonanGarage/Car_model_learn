@@ -8,8 +8,6 @@ from .config import Config
 from .dataset import DrivingDataset, prepare_data_from_csv
 from .model import DrivingModel
 
-MOVE_LABELS = {0: "STOP", 1: "FORWARD", 2: "BACKWARD"}
-
 
 def _resolve_device(device: str) -> torch.device:
     if device != "auto":
@@ -39,21 +37,29 @@ def predict_one(cfg: Config) -> None:
     model.load_state_dict(ckpt["model_state"])
     model.eval()
 
+    class_names = tuple(ckpt.get("class_names", cfg.data.servo_class_names))
+    class_values = tuple(ckpt.get("class_values", cfg.data.servo_class_us))
+
     # まずは val の先頭サンプルで推論する
     ds = DrivingDataset(prepared.val)
-    image, numeric, steer_t, move_t = ds[0]
+    image, numeric, _steer_t, move_t = ds[0]
 
     with torch.no_grad():
-        steer_pred, move_logits = model(
+        move_logits = model(
             image.unsqueeze(0).to(device),
             numeric.unsqueeze(0).to(device),
         )
 
     move_idx = int(move_logits.argmax(dim=1).item())
-    move_label = MOVE_LABELS.get(move_idx, str(move_idx))
+    move_label = class_names[move_idx] if move_idx < len(class_names) else str(move_idx)
+    move_value = class_values[move_idx] if move_idx < len(class_values) else move_idx
 
-    print(f"steer_pred: {float(steer_pred.item()):.2f} (target: {float(steer_t.item()):.2f})")
-    print(f"move_pred: {move_label} (target: {MOVE_LABELS.get(int(move_t.item()), int(move_t.item()))})")
+    target_idx = int(move_t.item())
+    target_label = class_names[target_idx] if target_idx < len(class_names) else str(target_idx)
+    target_value = class_values[target_idx] if target_idx < len(class_values) else target_idx
+
+    print(f"move_pred: {move_label} ({move_value})")
+    print(f"move_target: {target_label} ({target_value})")
 
 
 def main() -> None:  # pragma: no cover - script entry

@@ -9,6 +9,9 @@ class DataConfig:
     jsonl_path: Path = Path("AutomationCar_Orge/learning_data/log.jsonl")
     images_dir: Path = Path("AutomationCar_Orge/learning_data/images")
     csv_path: Path = Path("machine_learning/data/dataset_k1.csv")
+    # Servo 3-class labels (order matters for class id).
+    servo_class_us: tuple[int, ...] = (1100, 1500, 1900)
+    servo_class_names: tuple[str, ...] = ("LEFT", "STRAIGHT", "RIGHT")
     drive_state_order: tuple[str, ...] = (
         "READY",
         "MOVING",
