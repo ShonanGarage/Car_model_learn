@@ -64,13 +64,12 @@ class PreparedData:
     stats: NormalizationStats
 
 
-def throttle_to_move(throttle_us: float) -> int:
-    """throttle_us から 3クラス move を作る。"""
-    if throttle_us == 0:
-        return 0  # STOP
-    if throttle_us > 1500:
-        return 1  # FORWARD
-    return 2  # BACKWARD
+def steer_to_class(steer_us: float, class_values: Sequence[int]) -> int:
+    """steer_us を最も近いサーボ離散値のクラスIDに変換する。"""
+    if not class_values:
+        raise ValueError("class_values が空です。")
+    diffs = [abs(steer_us - v) for v in class_values]
+    return int(diffs.index(min(diffs)))
 
 
 def _forward_fill_sonar(distances: np.ndarray) -> np.ndarray:
@@ -153,6 +152,7 @@ def build_shifted_rows_from_labels_csv(
     *,
     k: int,
     drive_state_default: str,
+    class_values: Sequence[int],
 ) -> list[dict[str, str | float | int]]:
     """labels.csv から t -> t+k の行データを作る（split未設定）。"""
     if k < 1:
@@ -177,6 +177,7 @@ def build_shifted_rows_from_labels_csv(
         j = i + k
         sonar = base["distances"][i]
         throttle_tk = float(base["throttle_us"][j])
+        steer_tk = float(base["steer_us"][j])
         row = {
             "timestamp_t": float(base["timestamp"][i]),
             "image_path_t": str(base["image_path"][i]),
@@ -189,9 +190,9 @@ def build_shifted_rows_from_labels_csv(
             "steer_us_t": float(base["steer_us"][i]),
             "throttle_us_t": float(base["throttle_us"][i]),
             "timestamp_tk": float(base["timestamp"][j]),
-            "steer_us_tk": float(base["steer_us"][j]),
+            "steer_us_tk": steer_tk,
             "throttle_us_tk": throttle_tk,
-            "move_tk": int(throttle_to_move(throttle_tk)),
+            "move_tk": steer_to_class(steer_tk, class_values),
             "k": int(k),
             "split": "",  # 後で埋める
         }
@@ -208,6 +209,7 @@ def export_csv_from_labels(
     val_fraction: float = 0.2,
     seed: int = 42,
     drive_state_default: str = "READY",
+    class_values: Sequence[int],
 ) -> Path:
     """labels.csv からCSVを作る（split列もここで確定させる）。"""
     rows = build_shifted_rows_from_labels_csv(
@@ -215,6 +217,7 @@ def export_csv_from_labels(
         images_dir,
         k=k,
         drive_state_default=drive_state_default,
+        class_values=class_values,
     )
 
     val_mask = _assign_split(len(rows), val_fraction=val_fraction, seed=seed)
@@ -425,6 +428,7 @@ def main() -> None:  # pragma: no cover - CLI entry
         val_fraction=cfg.data.val_fraction,
         seed=cfg.data.seed,
         drive_state_default=cfg.data.drive_state_default,
+        class_values=cfg.data.servo_class_us,
     )
     print(f"wrote csv: {csv_path}")
     print("next: python3 -m machine_learning.train")
