@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -74,19 +73,6 @@ def throttle_to_move(throttle_us: float) -> int:
     return 2  # BACKWARD
 
 
-def _read_jsonl(path: Path) -> list[dict]:
-    rows: list[dict] = []
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            rows.append(json.loads(line))
-    if not rows:
-        raise ValueError(f"JSONLが空です: {path}")
-    return rows
-
-
 def _forward_fill_sonar(distances: np.ndarray) -> np.ndarray:
     """ソナーの -1.0 を欠損扱いにして前方補完する。"""
     arr = distances.copy()
@@ -108,18 +94,41 @@ def _forward_fill_sonar(distances: np.ndarray) -> np.ndarray:
     return arr
 
 
-def _build_base_arrays(jsonl_path: Path, images_dir: Path) -> dict[str, np.ndarray | list[str]]:
-    rows = _read_jsonl(jsonl_path)
-    rows = sorted(rows, key=lambda r: r["timestamp"])
+def _build_base_arrays_from_labels_csv(
+    csv_path: Path,
+    images_dir: Path,
+    *,
+    drive_state_default: str,
+) -> dict[str, np.ndarray | list[str]]:
+    rows: list[dict[str, str]] = []
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    if not rows:
+        raise ValueError(f"CSVが空です: {csv_path}")
 
-    timestamps = np.array([r["timestamp"] for r in rows], dtype=np.float64)
-    drive_state = [str(r["drive_state"]) for r in rows]
-    steer_us = np.array([r["steer_us"] for r in rows], dtype=np.float32)
-    throttle_us = np.array([r["throttle_us"] for r in rows], dtype=np.float32)
-    distances = np.array([r["distances"] for r in rows], dtype=np.float32)
+    rows = sorted(rows, key=lambda r: float(r["timestamp_ms"]))
+
+    timestamps = np.array([float(r["timestamp_ms"]) for r in rows], dtype=np.float64)
+    drive_state = [drive_state_default for _ in rows]
+    steer_us = np.array([float(r["steer_us"]) for r in rows], dtype=np.float32)
+    throttle_us = np.array([float(r["thr_us"]) for r in rows], dtype=np.float32)
+    distances = np.array(
+        [
+            [
+                float(r["sonar_front_m"]),
+                float(r["sonar_front_left_m"]),
+                float(r["sonar_front_right_m"]),
+                float(r["sonar_left_m"]),
+                float(r["sonar_right_m"]),
+            ]
+            for r in rows
+        ],
+        dtype=np.float32,
+    )
     distances = _forward_fill_sonar(distances)
 
-    image_paths = [str(images_dir / str(r["image_filename"])) for r in rows]
+    image_paths = [str(images_dir / str(r["filename"])) for r in rows]
 
     return {
         "timestamp": timestamps,
@@ -138,20 +147,25 @@ def _assign_split(n: int, val_fraction: float, seed: int) -> np.ndarray:
     return rng.random(n) < val_fraction  # True が val
 
 
-def build_shifted_rows(
-    jsonl_path: str | Path,
+def build_shifted_rows_from_labels_csv(
+    labels_csv_path: str | Path,
     images_dir: str | Path,
     *,
     k: int,
+    drive_state_default: str,
 ) -> list[dict[str, str | float | int]]:
-    """JSONLから t -> t+k の行データを作る（split未設定）。"""
+    """labels.csv から t -> t+k の行データを作る（split未設定）。"""
     if k < 1:
         raise ValueError("k は 1 以上である必要があります。")
 
-    jsonl_path = Path(jsonl_path)
+    labels_csv_path = Path(labels_csv_path)
     images_dir = Path(images_dir)
 
-    base = _build_base_arrays(jsonl_path, images_dir)
+    base = _build_base_arrays_from_labels_csv(
+        labels_csv_path,
+        images_dir,
+        drive_state_default=drive_state_default,
+    )
 
     n = len(base["steer_us"])
     m = n - k
@@ -185,17 +199,23 @@ def build_shifted_rows(
     return rows
 
 
-def export_csv(
-    jsonl_path: str | Path,
+def export_csv_from_labels(
+    labels_csv_path: str | Path,
     images_dir: str | Path,
     csv_path: str | Path,
     *,
     k: int = 1,
     val_fraction: float = 0.2,
     seed: int = 42,
+    drive_state_default: str = "READY",
 ) -> Path:
-    """JSONLからCSVを作る（split列もここで確定させる）。"""
-    rows = build_shifted_rows(jsonl_path, images_dir, k=k)
+    """labels.csv からCSVを作る（split列もここで確定させる）。"""
+    rows = build_shifted_rows_from_labels_csv(
+        labels_csv_path,
+        images_dir,
+        k=k,
+        drive_state_default=drive_state_default,
+    )
 
     val_mask = _assign_split(len(rows), val_fraction=val_fraction, seed=seed)
     for row, is_val in zip(rows, val_mask):
@@ -397,13 +417,14 @@ class DrivingDataset(Dataset):
 
 def main() -> None:  # pragma: no cover - CLI entry
     cfg = Config()
-    csv_path = export_csv(
-        cfg.data.jsonl_path,
+    csv_path = export_csv_from_labels(
+        cfg.data.labels_csv_path,
         cfg.data.images_dir,
         cfg.data.csv_path,
         k=cfg.data.k,
         val_fraction=cfg.data.val_fraction,
         seed=cfg.data.seed,
+        drive_state_default=cfg.data.drive_state_default,
     )
     print(f"wrote csv: {csv_path}")
     print("next: python3 -m machine_learning.train")

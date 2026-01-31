@@ -6,8 +6,9 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class DataConfig:
-    jsonl_path: Path = Path("AutomationCar_Orge/learning_data/log.jsonl")
-    images_dir: Path = Path("AutomationCar_Orge/learning_data/images")
+    labels_csv_path: Path = Path("learning_data/20260127_202651/labels.csv")
+    images_dir: Path = Path("learning_data/20260127_202651")
+    drive_state_default: str = "READY"
     csv_path: Path = Path("machine_learning/data/dataset_k1.csv")
     # Servo 3-class labels (order matters for class id).
     servo_class_us: tuple[int, ...] = (1100, 1500, 1900)
