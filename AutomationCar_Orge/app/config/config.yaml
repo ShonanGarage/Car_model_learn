@@ -17,20 +17,20 @@ servo: # steering servo settings
 
 sonar: # ultrasonic sensor GPIOs
   center:
-    trig_gpio: 23 # trigger pin (BCM)
-    echo_gpio: 24 # echo pin (BCM)
+    trig_gpio: 20 # trigger pin (BCM)
+    echo_gpio: 21 # echo pin (BCM)
   front_left:
-    trig_gpio: 25
-    echo_gpio: 8
-  front_right:
     trig_gpio: 7
     echo_gpio: 1
-  rear_left:
+  front_right:
     trig_gpio: 12
     echo_gpio: 16
+  rear_left:
+    trig_gpio: 23
+    echo_gpio: 24
   rear_right:
-    trig_gpio: 20
-    echo_gpio: 21
+    trig_gpio: 25
+    echo_gpio: 8
 
 throttle: # drive motor settings
   gpio: 19 # PWM GPIO pin (BCM)

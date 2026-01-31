@@ -50,8 +50,8 @@ pip install opencv-python lgpio
 2. **WebSocket操作の起動**
 
    ```bash
-   export PYTHONPATH=$PYTHONPATH:$(pwd)
-   python3 app/entrypoints/websocket.py
+   cd AutomationCar_Orge
+   uv run python -m app.entrypoints.websocket
    ```
 
    - WebSocketエンドポイント: `ws://<host>:8000/ws`
@@ -65,6 +65,12 @@ pip install opencv-python lgpio
    - `telemetry.jsonl`: 各フレームのタイムスタンプ、スロットル、ステアリング、距離データ
    - `*.jpg`: カメラからキャプチャされた画像
 
+3. **sonorテスト**
+
+   ```bash
+   cd AutomationCar_Orge
+   uv run python -m app.entrypoints.sonar
+   ```
 
 ## ユニットテスト
 

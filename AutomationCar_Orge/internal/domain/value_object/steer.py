@@ -13,8 +13,9 @@ class Steer:
         if self.pulse_width_us < 1000 or self.pulse_width_us > 2000:
             raise ValueError(f"Invalid steer pulse width: {self.pulse_width_us}")
 
-    def set_neutral(self) -> "Steer":
-        return Steer(1500)
+    @classmethod
+    def set_neutral(cls) -> "Steer":
+        return cls(1500)
 
     @classmethod
     def from_us(cls, value: int, settings: "Settings") -> "Steer":

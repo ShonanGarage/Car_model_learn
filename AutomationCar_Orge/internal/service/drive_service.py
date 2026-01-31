@@ -37,7 +37,7 @@ class DriveService:
         
         self.distances: List[float] = []
         self.frame: Optional[object] = None
-        # self.ok: bool = False
+        self.ok: bool = False
         self._last_log_time: float = 0.0
 
     def set_course_id(self, course_id: str) -> None:
@@ -50,6 +50,10 @@ class DriveService:
     @property
     def current_steer_us(self) -> int:
         return self.motion_vehicle.steer.value
+
+    @property
+    def current(self):
+        return self.motion_vehicle
     
     # 入力（押されているボタン）に対する車体の動作制御ロジック
     def _apply_throttle(self, decision: "ControlDecision") -> None:
@@ -68,6 +72,25 @@ class DriveService:
         elif decision.is_steer_right():
             self._steer_right(step=decision.steer_step)
 
+    # Public control APIs (used by entrypoints)
+    def move_forward(self) -> None:
+        self._move_forward()
+
+    def move_backward(self) -> None:
+        self._move_backward()
+
+    def stop(self) -> None:
+        self._stop()
+
+    def steer_left(self, step: int | None = None) -> None:
+        self._steer_left(step=step)
+
+    def steer_right(self, step: int | None = None) -> None:
+        self._steer_right(step=step)
+
+    def reset_steer(self) -> None:
+        self._reset_steer()
+
     def apply_control_input(self, input_state: ControlInput, now: float | None = None) -> None:
         decision = self.control_policy.evaluate(
             input_state=input_state,
@@ -83,7 +106,7 @@ class DriveService:
     def update(self) -> None:
         # NOTE: 超音波データ・画像を収集
         self.distances = self.infra.sonar_gateway.read_distances_m()
-        _ , self.frame = self.infra.camera_gateway.capture_frame()
+        self.ok, self.frame = self.infra.camera_gateway.capture_frame()
         # NOTE: 距離をもとに、現在の状況を把握してVehicleMotionを更新
         self.motion_vehicle = self.motion_vehicle.apply(
             self.distances,

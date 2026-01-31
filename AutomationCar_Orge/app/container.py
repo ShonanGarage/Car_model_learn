@@ -22,5 +22,7 @@ class Container:
         )
 
         self.drive_service = DriveService(self.infra, self.settings)
+        self.camera_gateway = self.infra.camera_gateway
+        self.data_repository = self.infra.data_repository
         self.camera_view = CameraView(show_ui=bool(self.settings.camera.show_ui))
         self.terminal_ui = TerminalUI()
