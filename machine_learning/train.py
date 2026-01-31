@@ -58,18 +58,18 @@ def _make_loaders(data_cfg: DataConfig, train_cfg: TrainConfig) -> tuple[DataLoa
 
 def _step(
     model: nn.Module,
-    batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     *,
     device: torch.device,
     move_loss_fn: nn.Module,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    image, numeric, _steer_t, move_t = batch
+    image, numeric, steer_cls_t = batch
     image = image.to(device, non_blocking=True)
     numeric = numeric.to(device, non_blocking=True)
-    move_t = move_t.to(device, non_blocking=True)
+    steer_cls_t = steer_cls_t.to(device, non_blocking=True)
 
-    move_logits = model(image, numeric)
-    move_loss = move_loss_fn(move_logits, move_t)
+    steer_logits = model(image, numeric)
+    move_loss = move_loss_fn(steer_logits, steer_cls_t)
     loss = move_loss
     return loss, move_loss.detach()
 
@@ -90,26 +90,26 @@ def _evaluate(
 
     with torch.no_grad():
         for batch in loader:
-            image, numeric, _steer_t, move_t = batch
+            image, numeric, steer_cls_t = batch
             image = image.to(device, non_blocking=True)
             numeric = numeric.to(device, non_blocking=True)
-            move_t = move_t.to(device, non_blocking=True)
+            steer_cls_t = steer_cls_t.to(device, non_blocking=True)
 
-            move_logits = model(image, numeric)
-            move_loss = move_loss_fn(move_logits, move_t)
+            steer_logits = model(image, numeric)
+            move_loss = move_loss_fn(steer_logits, steer_cls_t)
             loss = move_loss
 
-            total_loss += float(loss.item()) * len(move_t)
-            total_move += float(move_loss.item()) * len(move_t)
+            total_loss += float(loss.item()) * len(steer_cls_t)
+            total_move += float(move_loss.item()) * len(steer_cls_t)
 
-            preds = move_logits.argmax(dim=1)
-            total_correct += int((preds == move_t).sum().item())
-            total_count += int(len(move_t))
+            preds = steer_logits.argmax(dim=1)
+            total_correct += int((preds == steer_cls_t).sum().item())
+            total_count += int(len(steer_cls_t))
 
     return {
         "loss": total_loss / total_count,
-        "move_ce": total_move / total_count,
-        "move_acc": total_correct / total_count,
+        "steer_cls_ce": total_move / total_count,
+        "steer_cls_acc": total_correct / total_count,
     }
 
 
@@ -158,8 +158,8 @@ def train(cfg: Config) -> None:
             loss.backward()
             optimizer.step()
 
-            image, numeric, _steer_t, move_t = batch
-            bsz = len(move_t)
+            image, numeric, steer_cls_t = batch
+            bsz = len(steer_cls_t)
             running_loss += float(loss.item()) * bsz
             running_move += float(move_loss.item()) * bsz
             seen += bsz
@@ -186,8 +186,8 @@ def train(cfg: Config) -> None:
         print(
             f"epoch {epoch:02d} val "
             f"loss={val_metrics['loss']:.4f} "
-            f"move_ce={val_metrics['move_ce']:.4f} "
-            f"move_acc={val_metrics['move_acc']:.3f}"
+            f"steer_cls_ce={val_metrics['steer_cls_ce']:.4f} "
+            f"steer_cls_acc={val_metrics['steer_cls_acc']:.3f}"
         )
 
         if val_metrics["loss"] < best_val:

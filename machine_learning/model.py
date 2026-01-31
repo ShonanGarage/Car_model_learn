@@ -12,7 +12,7 @@ class DrivingModel(nn.Module):
     - 数値枝: MLP -> 64次元埋め込み
     - 融合: 連結 -> 共有MLP
     - 出力ヘッド:
-      - move: 3クラス分類（サーボ離散値）
+      - steer: 3クラス分類（サーボ離散値）
     """
 
     def __init__(self, numeric_dim: int) -> None:
@@ -53,7 +53,7 @@ class DrivingModel(nn.Module):
         )
 
         # 出力ヘッド（サーボ3クラス）。
-        self.move_head = nn.Linear(64, 3)
+        self.steer_head = nn.Linear(64, 3)
 
     def forward(self, image: torch.Tensor, numeric: torch.Tensor) -> torch.Tensor:
         """順伝播。
@@ -63,7 +63,7 @@ class DrivingModel(nn.Module):
             numeric: 形状 (B, numeric_dim) のテンソル
 
         Returns:
-            move_logits: 形状 (B, 3) の分類ロジット
+            steer_logits: 形状 (B, 3) の分類ロジット
         """
         x_img = self.image_encoder(image)
         x_img = self.image_pool(x_img)
@@ -74,5 +74,5 @@ class DrivingModel(nn.Module):
         x = torch.cat([x_img, x_num], dim=1)
         x = self.fusion(x)
 
-        move_logits = self.move_head(x)
-        return move_logits
+        steer_logits = self.steer_head(x)
+        return steer_logits

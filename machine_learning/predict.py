@@ -42,24 +42,24 @@ def predict_one(cfg: Config) -> None:
 
     # まずは val の先頭サンプルで推論する
     ds = DrivingDataset(prepared.val)
-    image, numeric, _steer_t, move_t = ds[0]
+    image, numeric, steer_cls_t = ds[0]
 
     with torch.no_grad():
-        move_logits = model(
+        steer_logits = model(
             image.unsqueeze(0).to(device),
             numeric.unsqueeze(0).to(device),
         )
 
-    move_idx = int(move_logits.argmax(dim=1).item())
-    move_label = class_names[move_idx] if move_idx < len(class_names) else str(move_idx)
-    move_value = class_values[move_idx] if move_idx < len(class_values) else move_idx
+    steer_idx = int(steer_logits.argmax(dim=1).item())
+    steer_label = class_names[steer_idx] if steer_idx < len(class_names) else str(steer_idx)
+    steer_value = class_values[steer_idx] if steer_idx < len(class_values) else steer_idx
 
-    target_idx = int(move_t.item())
+    target_idx = int(steer_cls_t.item())
     target_label = class_names[target_idx] if target_idx < len(class_names) else str(target_idx)
     target_value = class_values[target_idx] if target_idx < len(class_values) else target_idx
 
-    print(f"move_pred: {move_label} ({move_value})")
-    print(f"move_target: {target_label} ({target_value})")
+    print(f"steer_pred: {steer_label} ({steer_value})")
+    print(f"steer_target: {target_label} ({target_value})")
 
 
 def main() -> None:  # pragma: no cover - script entry

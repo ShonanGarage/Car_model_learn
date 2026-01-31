@@ -4,8 +4,8 @@
 現在（t）の観測から、次（t+1）のコマンドを予測する。
 
 #### 使うデータ
-- ログ: `AutomationCar_Orge/learning_data/log.jsonl`
-- 画像: `AutomationCar_Orge/learning_data/images/*.jpg`
+- ログ: `learning_data/20260127_202651/labels.csv`
+- 画像: `learning_data/20260127_202651/images/*.jpg`
 
 #### 入力（X）
 すべて t の値を使う。
@@ -17,15 +17,9 @@
 - `throttle_us(t)`
 
 #### 出力（y）
-次の時刻 t+1 のコマンド。
+次の時刻 t+1 の操舵クラス。
 
-- `steer_us(t+1)`
-- `move(t+1)`（`throttle_us(t+1)` から作る）
-
-#### move の定義
-- `STOP`: `throttle_us(t+1) == 0`
-- `FORWARD`: `throttle_us(t+1) > 1500`
-- `BACKWARD`: `0 < throttle_us(t+1) < 1500`
+- `steer_cls(t+1)`（`steer_us(t+1)` を 3クラスに離散化）
 
 #### データ整形方針
 - `k` ステップ先コマンドを予測できるようにする（まずは `k=1`）
@@ -42,12 +36,11 @@
 - `sonar_2_t`
 - `sonar_3_t`
 - `sonar_4_t`
-- `steer_us_t`
+- `steer_cls_t`
 - `throttle_us_t`
 - `timestamp_tk`
-- `steer_us_tk`
 - `throttle_us_tk`
-- `move_tk`
+- `steer_cls_tk`
 - `k`
 - `split`（`train` / `val`）
 
@@ -71,15 +64,12 @@
 
 #### 融合と出力
 - 画像128 + 数値64 を連結
-- 共有MLPのあとに2ヘッド
-- steerヘッド: `steer_us(t+k)` の回帰
-- moveヘッド: `move(t+k)` の3クラス分類
+- 共有MLPのあとに1ヘッド
+- steerヘッド: `steer_cls(t+k)` の3クラス分類
 - Dropout: 0.1〜0.3
 
 #### 損失関数（初期案）
-- steer（回帰）: MAE（L1Loss）
-- move（分類）: CrossEntropyLoss
-- 合成: `L = L_steer + λ * L_move`（まずは `λ = 1.0`）
+- steer（分類）: CrossEntropyLoss
 
 ## データ整形と正規化（初期案）
 「t -> t+k」のずらしと、数値のスケーリングを明示しておく。
@@ -97,8 +87,9 @@
     - `-1.0` は欠損として扱い、前方補完（ffill）で埋める
     - 置き換えた後、標準化（mean/std）で正規化
 
-- **操舵・スロットル**（`steer_us_t`, `throttle_us_t`）
-    - それぞれ標準化（mean/std）
+- **操舵クラス・スロットル**（`steer_cls_t`, `throttle_us_t`）
+    - `steer_cls_t` は 0/1/2 の整数クラス
+    - `throttle_us_t` は標準化（mean/std）
 
 - **走行状態**（`drive_state_t`）
     - one-hotエンコーディング（＝正規化は不要）

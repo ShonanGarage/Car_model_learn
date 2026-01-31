@@ -4,8 +4,6 @@ from .dataset import (
     NormalizationStats,
     PreparedData,
     PreparedSplit,
-    export_csv,
-    prepare_data,
     prepare_data_from_csv,
 )
 from .model import DrivingModel
@@ -19,8 +17,6 @@ __all__ = [
     "NormalizationStats",
     "PreparedData",
     "PreparedSplit",
-    "export_csv",
-    "prepare_data",
     "prepare_data_from_csv",
     "DrivingModel",
     "predict_one",

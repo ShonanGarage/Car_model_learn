@@ -25,12 +25,11 @@ CSV_COLUMNS = [
     "sonar_2_t",
     "sonar_3_t",
     "sonar_4_t",
-    "steer_us_t",
+    "steer_cls_t",
     "throttle_us_t",
     "timestamp_tk",
-    "steer_us_tk",
     "throttle_us_tk",
-    "move_tk",
+    "steer_cls_tk",
     "k",
     "split",
 ]
@@ -49,8 +48,7 @@ class NormalizationStats:
 class PreparedSplit:
     image_paths: list[str]
     numeric: np.ndarray
-    steer_target: np.ndarray
-    move_target: np.ndarray
+    steer_cls_target: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -177,7 +175,7 @@ def build_shifted_rows_from_labels_csv(
         j = i + k
         sonar = base["distances"][i]
         throttle_tk = float(base["throttle_us"][j])
-        steer_tk = float(base["steer_us"][j])
+        steer_t = float(base["steer_us"][i])
         row = {
             "timestamp_t": float(base["timestamp"][i]),
             "image_path_t": str(base["image_path"][i]),
@@ -187,12 +185,11 @@ def build_shifted_rows_from_labels_csv(
             "sonar_2_t": float(sonar[2]),
             "sonar_3_t": float(sonar[3]),
             "sonar_4_t": float(sonar[4]),
-            "steer_us_t": float(base["steer_us"][i]),
+            "steer_cls_t": steer_to_class(steer_t, class_values),
             "throttle_us_t": float(base["throttle_us"][i]),
             "timestamp_tk": float(base["timestamp"][j]),
-            "steer_us_tk": steer_tk,
             "throttle_us_tk": throttle_tk,
-            "move_tk": steer_to_class(steer_tk, class_values),
+            "steer_cls_tk": steer_to_class(float(base["steer_us"][j]), class_values),
             "k": int(k),
             "split": "",  # 後で埋める
         }
@@ -304,11 +301,10 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
         [[float(r[f"sonar_{i}_t"]) for i in range(5)] for r in rows],
         dtype=np.float32,
     )
-    steer_t = np.array([float(r["steer_us_t"]) for r in rows], dtype=np.float32)
+    steer_cls_t = np.array([int(float(r["steer_cls_t"])) for r in rows], dtype=np.int64)
     throttle_t = np.array([float(r["throttle_us_t"]) for r in rows], dtype=np.float32)
 
-    steer_tk = np.array([float(r["steer_us_tk"]) for r in rows], dtype=np.float32)
-    move_tk = np.array([int(float(r["move_tk"])) for r in rows], dtype=np.int64)
+    steer_cls_tk = np.array([int(float(r["steer_cls_tk"])) for r in rows], dtype=np.int64)
 
     split = np.array([r["split"].strip() for r in rows])
     train_mask = split == "train"
@@ -325,8 +321,8 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     numeric = np.concatenate(
         [
             distances_t,
-            steer_t[:, None],
             throttle_t[:, None],
+            steer_cls_t[:, None],
             drive_one_hot,
         ],
         axis=1,
@@ -338,8 +334,8 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
         "sonar_2_t",
         "sonar_3_t",
         "sonar_4_t",
-        "steer_us_t",
         "throttle_us_t",
+        "steer_cls_t",
     ] + [f"drive_state__{s}" for s in drive_states]
 
     train_numeric = numeric[train_mask]
@@ -347,7 +343,7 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     std = np.ones(numeric.shape[1], dtype=np.float32)
 
     # 連続値だけ標準化し、one-hot はそのまま使う
-    cont_dim = 7
+    cont_dim = 6
     cont_mean = train_numeric[:, :cont_dim].mean(axis=0)
     cont_std = train_numeric[:, :cont_dim].std(axis=0)
     cont_std = np.where(cont_std == 0.0, 1.0, cont_std)
@@ -359,14 +355,12 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     train = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, train_mask) if keep],
         numeric=numeric[train_mask],
-        steer_target=steer_tk[train_mask],
-        move_target=move_tk[train_mask],
+        steer_cls_target=steer_cls_tk[train_mask],
     )
     val = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, val_mask) if keep],
         numeric=numeric[val_mask],
-        steer_target=steer_tk[val_mask],
-        move_target=move_tk[val_mask],
+        steer_cls_target=steer_cls_tk[val_mask],
     )
 
     stats = NormalizationStats(mean=mean, std=std, numeric_columns=numeric_columns)
@@ -380,7 +374,7 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
 
 
 class DrivingDataset(Dataset):
-    """画像 + 数値特徴 -> (steer, move) のDataset。"""
+    """画像 + 数値特徴 -> steer_cls のDataset。"""
 
     def __init__(
         self,
@@ -390,8 +384,7 @@ class DrivingDataset(Dataset):
     ) -> None:
         self.image_paths = split.image_paths
         self.numeric = split.numeric
-        self.steer_target = split.steer_target
-        self.move_target = split.move_target
+        self.steer_cls_target = split.steer_cls_target
 
         if image_transform is None:
             image_transform = transforms.Compose(
@@ -410,12 +403,11 @@ class DrivingDataset(Dataset):
             img = img.convert("RGB")
             return self.image_transform(img)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         image = self._load_image(self.image_paths[idx])
         numeric = torch.from_numpy(self.numeric[idx])
-        steer_target = torch.tensor(self.steer_target[idx], dtype=torch.float32)
-        move_target = torch.tensor(self.move_target[idx], dtype=torch.long)
-        return image, numeric, steer_target, move_target
+        steer_cls_target = torch.tensor(self.steer_cls_target[idx], dtype=torch.long)
+        return image, numeric, steer_cls_target
 
 
 def main() -> None:  # pragma: no cover - CLI entry
