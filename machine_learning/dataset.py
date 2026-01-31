@@ -26,9 +26,8 @@ CSV_COLUMNS = [
     "sonar_3_t",
     "sonar_4_t",
     "steer_cls_t",
-    "throttle_us_t",
+    "throttle_cls_t",
     "timestamp_tk",
-    "throttle_us_tk",
     "steer_cls_tk",
     "k",
     "split",
@@ -68,6 +67,15 @@ def steer_to_class(steer_us: float, class_values: Sequence[int]) -> int:
         raise ValueError("class_values が空です。")
     diffs = [abs(steer_us - v) for v in class_values]
     return int(diffs.index(min(diffs)))
+
+
+def throttle_to_class(throttle_us: float) -> int:
+    """throttle_us を前後/停止の3クラスに変換する。"""
+    if throttle_us == 0:
+        return 0  # STOP
+    if throttle_us > 1500:
+        return 1  # FORWARD
+    return 2  # BACKWARD
 
 
 def _forward_fill_sonar(distances: np.ndarray) -> np.ndarray:
@@ -174,7 +182,6 @@ def build_shifted_rows_from_labels_csv(
     for i in range(m):
         j = i + k
         sonar = base["distances"][i]
-        throttle_tk = float(base["throttle_us"][j])
         steer_t = float(base["steer_us"][i])
         row = {
             "timestamp_t": float(base["timestamp"][i]),
@@ -186,9 +193,8 @@ def build_shifted_rows_from_labels_csv(
             "sonar_3_t": float(sonar[3]),
             "sonar_4_t": float(sonar[4]),
             "steer_cls_t": steer_to_class(steer_t, class_values),
-            "throttle_us_t": float(base["throttle_us"][i]),
+            "throttle_cls_t": throttle_to_class(float(base["throttle_us"][i])),
             "timestamp_tk": float(base["timestamp"][j]),
-            "throttle_us_tk": throttle_tk,
             "steer_cls_tk": steer_to_class(float(base["steer_us"][j]), class_values),
             "k": int(k),
             "split": "",  # 後で埋める
@@ -302,7 +308,7 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
         dtype=np.float32,
     )
     steer_cls_t = np.array([int(float(r["steer_cls_t"])) for r in rows], dtype=np.int64)
-    throttle_t = np.array([float(r["throttle_us_t"]) for r in rows], dtype=np.float32)
+    throttle_cls_t = np.array([int(float(r["throttle_cls_t"])) for r in rows], dtype=np.int64)
 
     steer_cls_tk = np.array([int(float(r["steer_cls_tk"])) for r in rows], dtype=np.int64)
 
@@ -318,32 +324,44 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
         known_order=cfg.data.drive_state_order,
     )
 
+    steer_class_count = len(cfg.data.servo_class_us)
+    throttle_class_count = 3
+
+    steer_one_hot = np.zeros((len(rows), steer_class_count), dtype=np.float32)
+    steer_one_hot[np.arange(len(rows)), steer_cls_t] = 1.0
+
+    throttle_one_hot = np.zeros((len(rows), throttle_class_count), dtype=np.float32)
+    throttle_one_hot[np.arange(len(rows)), throttle_cls_t] = 1.0
+
     numeric = np.concatenate(
         [
             distances_t,
-            throttle_t[:, None],
-            steer_cls_t[:, None],
+            steer_one_hot,
+            throttle_one_hot,
             drive_one_hot,
         ],
         axis=1,
     ).astype(np.float32)
 
-    numeric_columns = [
-        "sonar_0_t",
-        "sonar_1_t",
-        "sonar_2_t",
-        "sonar_3_t",
-        "sonar_4_t",
-        "throttle_us_t",
-        "steer_cls_t",
-    ] + [f"drive_state__{s}" for s in drive_states]
+    numeric_columns = (
+        [
+            "sonar_0_t",
+            "sonar_1_t",
+            "sonar_2_t",
+            "sonar_3_t",
+            "sonar_4_t",
+        ]
+        + [f"steer_cls__{i}" for i in range(steer_class_count)]
+        + [f"throttle_cls__{i}" for i in range(throttle_class_count)]
+        + [f"drive_state__{s}" for s in drive_states]
+    )
 
     train_numeric = numeric[train_mask]
     mean = np.zeros(numeric.shape[1], dtype=np.float32)
     std = np.ones(numeric.shape[1], dtype=np.float32)
 
     # 連続値だけ標準化し、one-hot はそのまま使う
-    cont_dim = 6
+    cont_dim = 5
     cont_mean = train_numeric[:, :cont_dim].mean(axis=0)
     cont_std = train_numeric[:, :cont_dim].std(axis=0)
     cont_std = np.where(cont_std == 0.0, 1.0, cont_std)

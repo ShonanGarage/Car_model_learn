@@ -37,9 +37,8 @@
 - `sonar_3_t`
 - `sonar_4_t`
 - `steer_cls_t`
-- `throttle_us_t`
+- `throttle_cls_t`
 - `timestamp_tk`
-- `throttle_us_tk`
 - `steer_cls_tk`
 - `k`
 - `split`（`train` / `val`）
@@ -87,9 +86,9 @@
     - `-1.0` は欠損として扱い、前方補完（ffill）で埋める
     - 置き換えた後、標準化（mean/std）で正規化
 
-- **操舵クラス・スロットル**（`steer_cls_t`, `throttle_us_t`）
-    - `steer_cls_t` は 0/1/2 の整数クラス
-    - `throttle_us_t` は標準化（mean/std）
+- **操舵クラス・スロットル**（`steer_cls_t`, `throttle_cls_t`）
+    - `steer_cls_t` は one-hot 化して入力
+    - `throttle_cls_t` は one-hot 化して入力
 
 - **走行状態**（`drive_state_t`）
     - one-hotエンコーディング（＝正規化は不要）
