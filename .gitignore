@@ -7,4 +7,3 @@ __pycache__/
 **/DerivedData/
 machine_learning/data/
 machine_learning/data/hf_cache/
-machine_learning/checkpoints/
