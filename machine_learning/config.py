@@ -6,10 +6,11 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class DataConfig:
-    labels_csv_path: Path = Path("learning_data/20260127_202651/labels.csv")
-    images_dir: Path = Path("learning_data/20260127_202651")
+    dataset_repo_id: str = "ShonanGarage/Car_Data_Fuki"
+    dataset_revision: str = "main"
+    dataset_local_dir: Path = Path("machine_learning/data/hf_cache")
     drive_state_default: str = "READY"
-    csv_path: Path = Path("machine_learning/data/dataset_k1.csv")
+    csv_path: Path = Path("machine_learning/data/dataset_0201_k1.csv")
     # Servo 3-class labels (order matters for class id).
     servo_class_us: tuple[int, ...] = (1100, 1500, 1900)
     servo_class_names: tuple[str, ...] = ("LEFT", "STRAIGHT", "RIGHT")
@@ -21,14 +22,14 @@ class DataConfig:
         "BLOCKED_BOTH",
         "EMERGENCY_STOP",
     )
-    k: int = 5
+    k: int = 1
     val_fraction: float = 0.2
     seed: int = 42
 
 
 @dataclass(frozen=True)
 class TrainConfig:
-    batch_size: int = 8
+    batch_size: int = 32
     epochs: int = 10
     lr: float = 1e-3
     weight_decay: float = 1e-4

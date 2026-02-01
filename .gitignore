@@ -5,3 +5,6 @@ __pycache__/
 *.xcuserstate
 **/xcuserdata/
 **/DerivedData/
+machine_learning/data/
+machine_learning/data/hf_cache/
+machine_learning/checkpoints/

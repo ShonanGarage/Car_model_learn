@@ -13,6 +13,11 @@ from torchvision import transforms
 
 from .config import Config
 
+try:
+    from huggingface_hub import snapshot_download
+except Exception:  # pragma: no cover - optional dependency
+    snapshot_download = None
+
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
@@ -150,6 +155,29 @@ def _assign_split(n: int, val_fraction: float, seed: int) -> np.ndarray:
         raise ValueError("val_fraction は 0 と 1 の間である必要があります。")
     rng = np.random.default_rng(seed)
     return rng.random(n) < val_fraction  # True が val
+
+
+def _resolve_dataset_paths(cfg: Config) -> tuple[Path, Path]:
+    if snapshot_download is None:
+        raise RuntimeError(
+            "dataset_repo_id を使うには huggingface_hub が必要です。"
+            " `uv add huggingface_hub` を実行してください。"
+        )
+
+    local_dir = cfg.data.dataset_local_dir / cfg.data.dataset_revision
+    local_dir.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(
+        snapshot_download(
+            repo_id=cfg.data.dataset_repo_id,
+            repo_type="dataset",
+            revision=cfg.data.dataset_revision,
+            local_dir=str(local_dir),
+            local_dir_use_symlinks=False,
+        )
+    )
+    labels_csv_path = repo_root / "labels.csv"
+    images_dir = repo_root / "images"
+    return labels_csv_path, images_dir
 
 
 def build_shifted_rows_from_labels_csv(
@@ -430,9 +458,10 @@ class DrivingDataset(Dataset):
 
 def main() -> None:  # pragma: no cover - CLI entry
     cfg = Config()
+    labels_csv_path, images_dir = _resolve_dataset_paths(cfg)
     csv_path = export_csv_from_labels(
-        cfg.data.labels_csv_path,
-        cfg.data.images_dir,
+        labels_csv_path,
+        images_dir,
         cfg.data.csv_path,
         k=cfg.data.k,
         val_fraction=cfg.data.val_fraction,

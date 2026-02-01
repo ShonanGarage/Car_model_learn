@@ -71,8 +71,9 @@ def _save_config_json(checkpoint_dir: Path, cfg: Config) -> None:
             "checkpoint_dir": str(cfg.train.checkpoint_dir),
         },
         "data": {
-            "labels_csv_path": str(cfg.data.labels_csv_path),
-            "images_dir": str(cfg.data.images_dir),
+            "dataset_repo_id": cfg.data.dataset_repo_id,
+            "dataset_revision": cfg.data.dataset_revision,
+            "dataset_local_dir": str(cfg.data.dataset_local_dir),
             "drive_state_default": cfg.data.drive_state_default,
             "csv_path": str(cfg.data.csv_path),
             "servo_class_us": list(cfg.data.servo_class_us),
