@@ -199,6 +199,7 @@ class DriveService:
             allow_reverse=True,
         )
         self.infra.dc_gateway.set_throttle(self.motion_vehicle.throttle)
+        self._log_telemetry()
 
     def _stop(self) -> None:
         self.motion_vehicle = self.motion_vehicle.set_stop()

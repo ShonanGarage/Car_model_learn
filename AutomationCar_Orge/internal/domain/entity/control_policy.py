@@ -128,7 +128,7 @@ class ControlPolicy:
         for key, active in keys.items():
             self._update_hold(key, active, now)
             if active:
-                hold_s[key] = now - self.hold_start.get(key, default=now)
+                hold_s[key] = now - self.hold_start.get(key, now)
             else:
                 hold_s[key] = 0.0
         return hold_s

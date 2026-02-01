@@ -52,10 +52,10 @@ terminal: # keyboard control tuning
 sonar_timeout_s: 0.03 # sonar read timeout [s], > 0
 sonar_inter_gap_s: 0.008 # gap between sonar triggers [s], >= 0
 sonar_sweep_sleep_s: 0.01 # sonar sweep sleep [s], >= 0
-brake_start_threshold_m: 0.2 # start braking distance [m], >= 0
-emergency_stop_threshold_m: 0.1 # emergency stop distance [m], >= 0
+brake_start_threshold_m: 0.1 # start braking distance [m], >= 0
+emergency_stop_threshold_m: 0.05 # emergency stop distance [m], >= 0
 blocked_threshold_m: 0.2 # blocked distance threshold [m], >= 0
 control_loop_sleep_s: 0.02 # main loop sleep [s], >= 0
 log_hz: 20 # logging frequency [Hz], > 0
-out_dir: "../learning_data" # output directory (path)
+out_dir: "./learning_data" # output directory (path)
 course_id: "1" # course/run identifier (string)

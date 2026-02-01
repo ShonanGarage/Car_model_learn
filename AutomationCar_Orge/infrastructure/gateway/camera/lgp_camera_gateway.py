@@ -4,9 +4,11 @@ from typing import Optional, Tuple
 from internal.interface.gateway.camera_gateway_interface import CameraGatewayInterface
 from app.config.settings import Settings
 import time
+_picamera2_import_error = None
 try:
     from picamera2 import Picamera2 # type: ignore
-except ImportError:
+except ImportError as e:
+    _picamera2_import_error = e
     Picamera2 = None
 
 class LgpCameraGateway(CameraGatewayInterface):
@@ -41,7 +43,8 @@ class LgpCameraGateway(CameraGatewayInterface):
                 print(f"Camera init: Picamera2 FAILED ({e})")
                 self.picam2 = None
         elif self.settings.camera.use_picamera2 and not Picamera2:
-            print("Camera init: Picamera2 not available (ImportError)")
+            detail = f" ({_picamera2_import_error})" if _picamera2_import_error else ""
+            print(f"Camera init: Picamera2 not available (ImportError){detail}")
 
         if not initialized:
             if self.settings.camera.use_picamera2:

@@ -4,7 +4,36 @@ from app.container import Container
 from internal.domain.value_object.control_input import ControlInput
 from presentation.terminal_ui import TerminalUI
 
+# keyboardライブラリのroot権限チェックを無効化
 import keyboard as keyboard_lib
+try:
+    import keyboard._nixcommon as _nixcommon
+    _nixcommon.ensure_root = lambda: None
+    import keyboard._nixkeyboard as _nixkeyboard
+    _nixkeyboard.ensure_root = lambda: None
+    def _build_device_no_root():
+        if _nixkeyboard.device:
+            return
+        _nixkeyboard.device = _nixkeyboard.aggregate_devices("kbd")
+    _nixkeyboard.build_device = _build_device_no_root
+    def _build_tables_no_root():
+        if _nixkeyboard.to_name and _nixkeyboard.from_name:
+            return
+        minimal_map = {
+            16: "q",
+            17: "w",
+            30: "a",
+            31: "s",
+            32: "d",
+            45: "x",
+            46: "c",
+            57: "space",
+        }
+        for scan_code, name in minimal_map.items():
+            _nixkeyboard.register_key((scan_code, ()), name)
+    _nixkeyboard.build_tables = _build_tables_no_root
+except Exception:
+    pass
 
 
 def main() -> None:
