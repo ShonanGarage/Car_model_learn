@@ -91,6 +91,15 @@ class DriveService:
     def reset_steer(self) -> None:
         self._reset_steer()
 
+    def set_steer_us(self, steer_us: int) -> None:
+        new_steer = Steer.from_us(steer_us, self.settings)
+        self.motion_vehicle = self.motion_vehicle.apply(
+            self.distances,
+            throttle_us=self.motion_vehicle.throttle.value,
+            steer_us=new_steer.value,
+        )
+        self.infra.servo_gateway.set_steer(self.motion_vehicle.steer)
+
     def apply_control_input(self, input_state: ControlInput, now: float | None = None) -> None:
         decision = self.control_policy.evaluate(
             input_state=input_state,

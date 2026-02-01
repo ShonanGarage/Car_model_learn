@@ -72,6 +72,16 @@ pip install opencv-python lgpio
    uv run python -m app.entrypoints.sonar
    ```
 
+4. **ML自動運転の起動**
+
+   ```bash
+   cd AutomationCar_Orge
+   uv run python -m app.entrypoints.ml.autodrive
+   ```
+
+   - `app/entrypoints/ml/config.py` で `checkpoint_path` と `data_csv_path` を指定します。
+   - 10Hzで推論し、推論失敗やカメラNG時は停止します。
+
 ## ユニットテスト
 
 ```bash
