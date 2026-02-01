@@ -11,7 +11,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from .config import Config
+from .config import Config, DataConfig
 
 try:
     from huggingface_hub import snapshot_download
@@ -138,7 +138,8 @@ def _build_base_arrays_from_labels_csv(
     )
     distances = _forward_fill_sonar(distances)
 
-    image_paths = [str(images_dir / str(r["filename"])) for r in rows]
+    repo_root = images_dir.parent
+    image_paths = [str(repo_root / str(r["filename"])) for r in rows]
 
     return {
         "timestamp": timestamps,
@@ -157,24 +158,23 @@ def _assign_split(n: int, val_fraction: float, seed: int) -> np.ndarray:
     return rng.random(n) < val_fraction  # True が val
 
 
-def _resolve_dataset_paths(cfg: Config) -> tuple[Path, Path]:
+def _resolve_dataset_paths(data_cfg: DataConfig) -> tuple[Path, Path]:
     if snapshot_download is None:
         raise RuntimeError(
             "dataset_repo_id を使うには huggingface_hub が必要です。"
             " `uv add huggingface_hub` を実行してください。"
         )
 
-    local_dir = cfg.data.dataset_local_dir / cfg.data.dataset_revision
+    local_dir = data_cfg.dataset_local_dir / data_cfg.dataset_revision
     local_dir.mkdir(parents=True, exist_ok=True)
-    repo_root = Path(
-        snapshot_download(
-            repo_id=cfg.data.dataset_repo_id,
-            repo_type="dataset",
-            revision=cfg.data.dataset_revision,
-            local_dir=str(local_dir),
-            local_dir_use_symlinks=False,
-        )
+    snapshot_download(
+        repo_id=data_cfg.dataset_repo_id,
+        repo_type="dataset",
+        revision=data_cfg.dataset_revision,
+        local_dir=str(local_dir),
+        local_dir_use_symlinks=False,
     )
+    repo_root = Path(local_dir)
     labels_csv_path = repo_root / "labels.csv"
     images_dir = repo_root / "images"
     return labels_csv_path, images_dir
@@ -458,7 +458,7 @@ class DrivingDataset(Dataset):
 
 def main() -> None:  # pragma: no cover - CLI entry
     cfg = Config()
-    labels_csv_path, images_dir = _resolve_dataset_paths(cfg)
+    labels_csv_path, images_dir = _resolve_dataset_paths(cfg.data)
     csv_path = export_csv_from_labels(
         labels_csv_path,
         images_dir,
