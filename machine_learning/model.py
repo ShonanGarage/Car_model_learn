@@ -18,19 +18,26 @@ class DrivingModel(nn.Module):
     def __init__(self, numeric_dim: int) -> None:
         super().__init__()
 
-        # 画像枝: 可能なら事前学習済みのMobileNetV3-Smallを使う。
-        # ネットワークが無い環境では重みダウンロードに失敗するためフォールバックする。
-        try:
-            weights = tvm.MobileNet_V3_Small_Weights.DEFAULT
-            backbone = tvm.mobilenet_v3_small(weights=weights)
-        except Exception:
-            backbone = tvm.mobilenet_v3_small(weights=None)
-        self.image_encoder = backbone.features
+        # 画像枝: 軽量CNN。
+        def conv_block(in_ch: int, out_ch: int, stride: int) -> nn.Sequential:
+            return nn.Sequential(
+                nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=stride, padding=1, bias=False),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+            )
+
+        self.image_encoder = nn.Sequential(
+            conv_block(3, 32, 2),
+            conv_block(32, 32, 1),
+            conv_block(32, 64, 2),
+            conv_block(64, 64, 1),
+            conv_block(64, 128, 2),
+            conv_block(128, 128, 1),
+        )
         self.image_pool = nn.AdaptiveAvgPool2d(1)
-        # MobileNetV3-Smallの特徴量出力は576チャネル。
         self.image_proj = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(576, 128),
+            nn.Linear(128, 128),
             nn.ReLU(),
         )
 

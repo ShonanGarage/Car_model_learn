@@ -21,7 +21,7 @@ class DataConfig:
         "BLOCKED_BOTH",
         "EMERGENCY_STOP",
     )
-    k: int = 1
+    k: int = 5
     val_fraction: float = 0.2
     seed: int = 42
 
@@ -36,7 +36,7 @@ class TrainConfig:
     num_workers: int = 0
     device: str = "auto"
     log_every: int = 20
-    checkpoint_dir: Path = Path("machine_learning/checkpoints/ver_02")
+    checkpoint_dir: Path = Path("machine_learning/checkpoints/ver_05_k1")
 
 
 @dataclass(frozen=True)

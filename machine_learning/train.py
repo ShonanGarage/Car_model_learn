@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import torch
 import torch.nn as nn
@@ -56,6 +57,36 @@ def _save_metrics_plot(
     plt.close(fig)
 
 
+def _save_config_json(checkpoint_dir: Path, cfg: Config) -> None:
+    data = {
+        "train": {
+            "batch_size": cfg.train.batch_size,
+            "epochs": cfg.train.epochs,
+            "lr": cfg.train.lr,
+            "weight_decay": cfg.train.weight_decay,
+            "lambda_move": cfg.train.lambda_move,
+            "num_workers": cfg.train.num_workers,
+            "device": cfg.train.device,
+            "log_every": cfg.train.log_every,
+            "checkpoint_dir": str(cfg.train.checkpoint_dir),
+        },
+        "data": {
+            "labels_csv_path": str(cfg.data.labels_csv_path),
+            "images_dir": str(cfg.data.images_dir),
+            "drive_state_default": cfg.data.drive_state_default,
+            "csv_path": str(cfg.data.csv_path),
+            "servo_class_us": list(cfg.data.servo_class_us),
+            "servo_class_names": list(cfg.data.servo_class_names),
+            "drive_state_order": list(cfg.data.drive_state_order),
+            "k": cfg.data.k,
+            "val_fraction": cfg.data.val_fraction,
+            "seed": cfg.data.seed,
+        },
+    }
+    out_path = checkpoint_dir / "config.json"
+    out_path.write_text(json.dumps(data, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
 def _make_loaders(data_cfg: DataConfig, train_cfg: TrainConfig) -> tuple[DataLoader, DataLoader, int]:
     prepared = prepare_data_from_csv(data_cfg.csv_path)
 
@@ -88,17 +119,16 @@ def _step(
     batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
     *,
     device: torch.device,
-    move_loss_fn: nn.Module,
-) -> tuple[torch.Tensor, torch.Tensor]:
+    loss_fn: nn.Module,
+) -> torch.Tensor:
     image, numeric, steer_cls_t = batch
     image = image.to(device, non_blocking=True)
     numeric = numeric.to(device, non_blocking=True)
     steer_cls_t = steer_cls_t.to(device, non_blocking=True)
 
     steer_logits = model(image, numeric)
-    move_loss = move_loss_fn(steer_logits, steer_cls_t)
-    loss = move_loss
-    return loss, move_loss.detach()
+    loss = loss_fn(steer_logits, steer_cls_t)
+    return loss
 
 
 def _evaluate(
@@ -106,12 +136,11 @@ def _evaluate(
     loader: DataLoader,
     *,
     device: torch.device,
-    move_loss_fn: nn.Module,
+    loss_fn: nn.Module,
 ) -> dict[str, float]:
     model.eval()
 
     total_loss = 0.0
-    total_move = 0.0
     total_correct = 0
     total_count = 0
 
@@ -123,11 +152,9 @@ def _evaluate(
             steer_cls_t = steer_cls_t.to(device, non_blocking=True)
 
             steer_logits = model(image, numeric)
-            move_loss = move_loss_fn(steer_logits, steer_cls_t)
-            loss = move_loss
+            loss = loss_fn(steer_logits, steer_cls_t)
 
             total_loss += float(loss.item()) * len(steer_cls_t)
-            total_move += float(move_loss.item()) * len(steer_cls_t)
 
             preds = steer_logits.argmax(dim=1)
             total_correct += int((preds == steer_cls_t).sum().item())
@@ -135,7 +162,6 @@ def _evaluate(
 
     return {
         "loss": total_loss / total_count,
-        "steer_cls_ce": total_move / total_count,
         "steer_cls_acc": total_correct / total_count,
     }
 
@@ -150,7 +176,7 @@ def train(cfg: Config) -> None:
 
     model = DrivingModel(numeric_dim=numeric_dim).to(device)
 
-    move_loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss()
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -162,6 +188,7 @@ def train(cfg: Config) -> None:
     checkpoint_dir = cfg.train.checkpoint_dir
     _ensure_dir(checkpoint_dir)
     best_path = checkpoint_dir / "best.pt"
+    _save_config_json(checkpoint_dir, cfg)
 
     epoch_history: list[int] = []
     train_loss_history: list[float] = []
@@ -172,7 +199,6 @@ def train(cfg: Config) -> None:
         model.train()
 
         running_loss = 0.0
-        running_move = 0.0
         seen = 0
 
         train_iter = tqdm(train_loader, desc=f"epoch {epoch:02d}", leave=False)
@@ -180,11 +206,11 @@ def train(cfg: Config) -> None:
         for step_idx, batch in enumerate(train_iter, start=1):
             optimizer.zero_grad(set_to_none=True)
 
-            loss, move_loss = _step(
+            loss = _step(
                 model,
                 batch,
                 device=device,
-                move_loss_fn=move_loss_fn,
+                loss_fn=loss_fn,
             )
             loss.backward()
             optimizer.step()
@@ -192,31 +218,27 @@ def train(cfg: Config) -> None:
             image, numeric, steer_cls_t = batch
             bsz = len(steer_cls_t)
             running_loss += float(loss.item()) * bsz
-            running_move += float(move_loss.item()) * bsz
             seen += bsz
 
             train_iter.set_postfix(
                 loss=f"{running_loss/seen:.4f}",
-                move=f"{running_move/seen:.4f}",
             )
 
             if step_idx % cfg.train.log_every == 0:
                 print(
                     f"epoch {epoch:02d} step {step_idx:04d} "
                     f"loss={running_loss/seen:.4f} "
-                    f"move={running_move/seen:.4f}"
                 )
 
         val_metrics = _evaluate(
             model,
             val_loader,
             device=device,
-            move_loss_fn=move_loss_fn,
+            loss_fn=loss_fn,
         )
         print(
             f"epoch {epoch:02d} val "
             f"loss={val_metrics['loss']:.4f} "
-            f"steer_cls_ce={val_metrics['steer_cls_ce']:.4f} "
             f"steer_cls_acc={val_metrics['steer_cls_acc']:.3f}"
         )
 
