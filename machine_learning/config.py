@@ -34,7 +34,7 @@ class TrainConfig:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     lambda_move: float = 1.0
-    num_workers: int = 0
+    num_workers: int = 6
     device: str = "auto"
     log_every: int = 20
     checkpoint_dir: Path = Path("machine_learning/checkpoints/ver_05_k1")
