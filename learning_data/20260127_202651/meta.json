@@ -1,0 +1,10 @@
+{
+  "run_name": "20260127_202651",
+  "started_at_unix_s": 1769513211.3195186,
+  "pi_ip": "127.0.0.1",
+  "http_port": 8080,
+  "stream_url": "http://127.0.0.1:8080/stream",
+  "telemetry_url": "http://127.0.0.1:8080/telemetry",
+  "capture_fps": 10,
+  "telemetry_hz": 20
+}
