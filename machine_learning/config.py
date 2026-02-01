@@ -29,7 +29,7 @@ class DataConfig:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    batch_size: int = 32
+    batch_size: int = 128
     epochs: int = 10
     lr: float = 1e-3
     weight_decay: float = 1e-4
@@ -37,7 +37,7 @@ class TrainConfig:
     num_workers: int = 0
     device: str = "auto"
     log_every: int = 20
-    checkpoint_dir: Path = Path("machine_learning/checkpoints/ver_05_k1")
+    checkpoint_dir: Path = Path("machine_learning/checkpoints/ver_06_k1")
 
 
 @dataclass(frozen=True)
