@@ -34,8 +34,8 @@ sonar: # ultrasonic sensor GPIOs
 
 throttle: # drive motor settings
   gpio: 19 # PWM GPIO pin (BCM)
-  fixed_us: 1600 # forward pulse width [us]
-  back_us: 1350 # reverse pulse width [us]
+  fixed_us: 1630 # forward pulse width [us]
+  back_us: 1300 # reverse pulse width [us]
   frequency: 100 # PWM frequency [Hz], > 0
   ramp_forward_ratio: 0.3 # forward ramp ratio per tick [0.0-1.0]
   ramp_backward_ratio: 0.3 # reverse ramp ratio per tick [0.0-1.0]
@@ -54,7 +54,7 @@ sonar_inter_gap_s: 0.008 # gap between sonar triggers [s], >= 0
 sonar_sweep_sleep_s: 0.01 # sonar sweep sleep [s], >= 0
 brake_start_threshold_m: 0.1 # start braking distance [m], >= 0
 emergency_stop_threshold_m: 0.05 # emergency stop distance [m], >= 0
-blocked_threshold_m: 0.2 # blocked distance threshold [m], >= 0
+blocked_threshold_m: 0.05 # blocked distance threshold [m], >= 0
 control_loop_sleep_s: 0.02 # main loop sleep [s], >= 0
 log_hz: 20 # logging frequency [Hz], > 0
 out_dir: "./learning_data" # output directory (path)

@@ -35,6 +35,8 @@ try:
 except Exception:
     pass
 
+# 実行方法
+# python3 -m app.entrypoints.terminal
 
 def main() -> None:
     container = Container()
@@ -66,19 +68,20 @@ def main() -> None:
             )
 
             # 3. Display status (Skipping status update if too fast could be an option, but 50Hz is fine)
+            distances, ok, frame = container.drive_service.get_sensor_snapshot()
             container.camera_view.display(
-                container.drive_service.frame,
+                frame,
                 container.drive_service.current,
             )
 
             TerminalUI.display_status(
                 TerminalUI.ControlStatus(
                 state=container.drive_service.state.name,
-                distances=container.drive_service.distances,
+                distances=distances,
                 steer_us=container.drive_service.current_steer_us,
                 throttle_us=container.drive_service.current.throttle.value,
                 is_forward=container.drive_service.current.throttle.is_forward(),
-                camera_ok=container.drive_service.ok,
+                camera_ok=ok,
                 )
             )
             

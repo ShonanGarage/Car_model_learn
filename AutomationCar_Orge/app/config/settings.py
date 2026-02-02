@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import Any, Type, TypeVar, get_type_hints, cast
 import yaml
 
+from internal.domain.value_object.safety_rules import SafetyRules
+from internal.domain.value_object.control_rules import ControlRules
 # NOTE: 任意の型
 T = TypeVar("T")
 
@@ -135,3 +137,22 @@ def load_settings(yaml_path: Path | str | None = None) -> Settings:
     return from_dict(Settings, data)
 
 SETTINGS = load_settings()
+
+
+def build_safety_rules(settings: Settings) -> SafetyRules:
+    return SafetyRules(
+        emergency_stop_threshold_m=settings.emergency_stop_threshold_m,
+        blocked_threshold_m=settings.blocked_threshold_m,
+    )
+
+
+def build_control_rules(settings: Settings) -> ControlRules:
+    return ControlRules(
+        steer_full_time_s=settings.terminal.steer_full_time_s,
+        steer_step_us=settings.servo.step_us,
+        steer_accel_step_per_s=settings.terminal.steer_accel_step_per_s,
+        steer_max_step=settings.terminal.steer_max_step,
+        steer_center_us=settings.servo.center_us,
+        steer_min_us=settings.servo.min_us,
+        steer_max_us=settings.servo.max_us,
+    )

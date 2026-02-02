@@ -8,6 +8,19 @@ from internal.service.drive_service import DriveInfra, DriveService
 from presentation.camera_view import CameraView
 from presentation.terminal_ui import TerminalUI
 
+def _parse_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("1", "true", "yes", "on"):
+            return True
+        if normalized in ("0", "false", "no", "off", ""):
+            return False
+    if value is None:
+        return default
+    return default
+
 class Container:
     def __init__(self):
         self.settings = load_settings()
@@ -24,5 +37,5 @@ class Container:
         self.drive_service = DriveService(self.infra, self.settings)
         self.camera_gateway = self.infra.camera_gateway
         self.data_repository = self.infra.data_repository
-        self.camera_view = CameraView(show_ui=bool(self.settings.camera.show_ui))
+        self.camera_view = CameraView(show_ui=_parse_bool(self.settings.camera.show_ui, default=False))
         self.terminal_ui = TerminalUI()

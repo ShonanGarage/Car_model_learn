@@ -1,7 +1,7 @@
 from enum import Enum, auto
-from typing import List
 
-from app.config.settings import SETTINGS
+from .safety_rules import SafetyRules
+from .sonar_frame import SonarFrame
 
 class DriveState(Enum):
     READY = auto()
@@ -12,31 +12,28 @@ class DriveState(Enum):
     EMERGENCY_STOP = auto()
 
     @classmethod
-    def from_distances(
+    def from_sonar_frame(
         cls,
-        distances: List[float],
+        frame: SonarFrame,
         current_state: "DriveState",
+        rules: SafetyRules,
     ) -> "DriveState":
         """Determine the safe state based on current distances.
-        Indices: 0: center, 1: front_left, 2: front_right, 3: rear_left, 4: rear_right
         """
-        if not distances or len(distances) < 5:
+        if frame.is_empty():
             return current_state
 
-        front_indices = [0, 1, 2]
-        rear_indices = [3, 4]
-        
         front_emergency = any(
-            0 < distances[i] < SETTINGS.emergency_stop_threshold_m for i in front_indices
+            0 < d < rules.emergency_stop_threshold_m for d in frame.front
         )
         if front_emergency:
             return cls.EMERGENCY_STOP
 
         front_blocked = any(
-            0 < distances[i] < SETTINGS.blocked_threshold_m for i in front_indices
+            0 < d < rules.blocked_threshold_m for d in frame.front
         )
         rear_blocked = any(
-            0 < distances[i] < SETTINGS.blocked_threshold_m for i in rear_indices
+            0 < d < rules.blocked_threshold_m for d in frame.rear
         )
 
         if front_blocked and rear_blocked:

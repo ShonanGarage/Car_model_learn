@@ -1,9 +1,9 @@
 from dataclasses import dataclass, replace
-from typing import List
-
 from ..value_object.throttle import Throttle
 from ..value_object.steer import Steer
 from ..value_object.drive_state import DriveState
+from ..value_object.safety_rules import SafetyRules
+from ..value_object.sonar_frame import SonarFrame
 
 # 初期化用ヘルパー関数
 def boot_vehicle_motion_ready(
@@ -28,15 +28,17 @@ class VehicleMotion:
 
     def apply(
         self,
-        distances: List[float],
+        sonar_frame: SonarFrame,
         throttle_us: int,
         steer_us: int,
+        safety_rules: SafetyRules,
         allow_reverse: bool = True,
     ) -> "VehicleMotion":
         """Return a new VehicleMotion with updated state and control inputs."""
-        new_state = DriveState.from_distances(
-            distances,
+        new_state = DriveState.from_sonar_frame(
+            sonar_frame,
             self.state,
+            safety_rules,
         )
         new_steer = Steer(steer_us)
         new_throttle = Throttle(throttle_us)

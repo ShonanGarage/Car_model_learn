@@ -5,8 +5,8 @@ from enum import Enum, auto
 import time
 from typing import Dict
 
-from app.config.settings import SETTINGS
 from internal.domain.value_object.control_input import ControlInput
+from internal.domain.value_object.control_rules import ControlRules
 
 class ThrottleAction(Enum):
     STOP = auto()
@@ -47,6 +47,7 @@ class ControlDecision:
 
 @dataclass
 class ControlPolicy:
+    rules: ControlRules
     hold_start: Dict[str, float] = field(default_factory=dict)
 
     def evaluate(
@@ -86,13 +87,13 @@ class ControlPolicy:
 
         left_hold_s = hold_s["a"]
         right_hold_s = hold_s["d"]
-        steer_full_time_s = SETTINGS.terminal.steer_full_time_s
-        steer_step_us = SETTINGS.servo.step_us
-        steer_accel_step_per_s = SETTINGS.terminal.steer_accel_step_per_s
-        steer_max_step = SETTINGS.terminal.steer_max_step
-        steer_center_us = SETTINGS.servo.center_us
-        steer_min_us = SETTINGS.servo.min_us
-        steer_max_us = SETTINGS.servo.max_us
+        steer_full_time_s = self.rules.steer_full_time_s
+        steer_step_us = self.rules.steer_step_us
+        steer_accel_step_per_s = self.rules.steer_accel_step_per_s
+        steer_max_step = self.rules.steer_max_step
+        steer_center_us = self.rules.steer_center_us
+        steer_min_us = self.rules.steer_min_us
+        steer_max_us = self.rules.steer_max_us
 
         if input_state.left:
             ratio = min(1.0, left_hold_s / steer_full_time_s)

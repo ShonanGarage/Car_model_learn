@@ -120,16 +120,17 @@ def main() -> None:
             loop_start = time.time()
             container.drive_service.update()
 
-            if not container.drive_service.ok or container.drive_service.frame is None:
+            distances, ok, frame = container.drive_service.get_sensor_snapshot()
+            if not ok or frame is None:
                 container.drive_service.stop()
                 print("[ml][warn] camera not ok -> stop")
                 time.sleep(interval)
                 continue
 
             try:
-                image = _to_tensor(container.drive_service.frame, image_transform)
+                image = _to_tensor(frame, image_transform)
                 numeric = _build_numeric(
-                    distances=container.drive_service.distances,
+                    distances=distances,
                     steer_us=float(container.drive_service.current_steer_us),
                     throttle_us=float(container.drive_service.current.throttle.value),
                     drive_state=container.drive_service.state.name,

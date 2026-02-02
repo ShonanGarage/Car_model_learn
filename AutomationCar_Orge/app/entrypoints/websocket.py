@@ -88,12 +88,13 @@ class WebSocketServer:
             pass
 
     def _build_telemetry(self) -> Dict[str, Any]:
-        image_b64 = self._encode_frame(self.container.drive_service.frame)
+        distances, _, frame = self.container.drive_service.get_sensor_snapshot()
+        image_b64 = self._encode_frame(frame)
         return {
             "type": "telemetry",
             "timestamp": time.time(),
             "state": self.container.drive_service.state.name,
-            "distances": self.container.drive_service.distances,
+            "distances": distances,
             "steer_us": self.container.drive_service.current_steer_us,
             "throttle_us": self.container.drive_service.current.throttle.value,
             "image_jpeg_b64": image_b64,
