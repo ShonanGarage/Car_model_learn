@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -166,6 +167,9 @@ def _resolve_dataset_paths(data_cfg: DataConfig) -> tuple[Path, Path]:
         )
 
     local_dir = data_cfg.dataset_local_dir / data_cfg.dataset_revision
+    if local_dir.exists():
+        # 同一revisionで別データを使う場合の混在を防ぐ
+        shutil.rmtree(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
     snapshot_download(
         repo_id=data_cfg.dataset_repo_id,
