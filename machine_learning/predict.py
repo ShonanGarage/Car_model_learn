@@ -43,10 +43,10 @@ def predict_one(cfg: Config) -> None:
 
     # まずは val の先頭サンプルで推論する
     ds = DrivingDataset(prepared.val)
-    image, numeric, steer_cls_t = ds[0]
+    image, numeric, steer_cls_t, throttle_us_t = ds[0]
 
     with torch.no_grad():
-        steer_logits = model(
+        steer_logits, throttle_pred = model(
             image.unsqueeze(0).to(device),
             numeric.unsqueeze(0).to(device),
         )
@@ -61,6 +61,8 @@ def predict_one(cfg: Config) -> None:
 
     print(f"steer_pred: {steer_label} ({steer_value})")
     print(f"steer_target: {target_label} ({target_value})")
+    print(f"throttle_pred: {float(throttle_pred.item()):.1f}")
+    print(f"throttle_target: {float(throttle_us_t.item()):.1f}")
 
 
 def main() -> None:  # pragma: no cover - script entry

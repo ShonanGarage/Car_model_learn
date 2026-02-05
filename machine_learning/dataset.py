@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -25,16 +24,11 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 CSV_COLUMNS = [
     "timestamp_t",
     "image_path_t",
-    "drive_state_t",
-    "sonar_0_t",
-    "sonar_1_t",
-    "sonar_2_t",
-    "sonar_3_t",
-    "sonar_4_t",
     "steer_cls_t",
-    "throttle_cls_t",
+    "throttle_us_t",
     "timestamp_tk",
     "steer_cls_tk",
+    "throttle_us_tk",
     "k",
     "split",
 ]
@@ -54,6 +48,7 @@ class PreparedSplit:
     image_paths: list[str]
     numeric: np.ndarray
     steer_cls_target: np.ndarray
+    throttle_us_target: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -63,7 +58,6 @@ class PreparedData:
     train: PreparedSplit
     val: PreparedSplit
     numeric_columns: list[str]
-    drive_states: list[str]
     stats: NormalizationStats
 
 
@@ -75,41 +69,9 @@ def steer_to_class(steer_us: float, class_values: Sequence[int]) -> int:
     return int(diffs.index(min(diffs)))
 
 
-def throttle_to_class(throttle_us: float) -> int:
-    """throttle_us を前後/停止の3クラスに変換する。"""
-    if throttle_us == 0:
-        return 0  # STOP
-    if throttle_us > 1500:
-        return 1  # FORWARD
-    return 2  # BACKWARD
-
-
-def _forward_fill_sonar(distances: np.ndarray) -> np.ndarray:
-    """ソナーの -1.0 を欠損扱いにして前方補完する。"""
-    arr = distances.copy()
-    missing = arr == -1.0
-
-    # 先頭欠損を埋めるために列ごとの平均を先に計算する
-    col_mean = np.zeros(arr.shape[1], dtype=np.float32)
-    for col in range(arr.shape[1]):
-        valid = arr[~missing[:, col], col]
-        col_mean[col] = float(valid.mean()) if len(valid) else 0.0
-
-    for col in range(arr.shape[1]):
-        last = col_mean[col]
-        for i in range(arr.shape[0]):
-            if arr[i, col] == -1.0:
-                arr[i, col] = last
-            else:
-                last = arr[i, col]
-    return arr
-
-
 def _build_base_arrays_from_labels_csv(
     csv_path: Path,
     images_dir: Path,
-    *,
-    drive_state_default: str,
 ) -> dict[str, np.ndarray | list[str]]:
     rows: list[dict[str, str]] = []
     with csv_path.open("r", encoding="utf-8", newline="") as f:
@@ -118,36 +80,19 @@ def _build_base_arrays_from_labels_csv(
     if not rows:
         raise ValueError(f"CSVが空です: {csv_path}")
 
-    rows = sorted(rows, key=lambda r: float(r["timestamp_ms"]))
+    rows = sorted(rows, key=lambda r: float(r["timestamp"]))
 
-    timestamps = np.array([float(r["timestamp_ms"]) for r in rows], dtype=np.float64)
-    drive_state = [drive_state_default for _ in rows]
+    timestamps = np.array([float(r["timestamp"]) for r in rows], dtype=np.float64)
     steer_us = np.array([float(r["steer_us"]) for r in rows], dtype=np.float32)
-    throttle_us = np.array([float(r["thr_us"]) for r in rows], dtype=np.float32)
-    distances = np.array(
-        [
-            [
-                float(r["sonar_front_m"]),
-                float(r["sonar_front_left_m"]),
-                float(r["sonar_front_right_m"]),
-                float(r["sonar_left_m"]),
-                float(r["sonar_right_m"]),
-            ]
-            for r in rows
-        ],
-        dtype=np.float32,
-    )
-    distances = _forward_fill_sonar(distances)
+    throttle_us = np.array([float(r["throttle_us"]) for r in rows], dtype=np.float32)
 
     repo_root = images_dir.parent
-    image_paths = [str(repo_root / str(r["filename"])) for r in rows]
+    image_paths = [str(repo_root / str(r["image_filename"])) for r in rows]
 
     return {
         "timestamp": timestamps,
-        "drive_state": drive_state,
         "steer_us": steer_us,
         "throttle_us": throttle_us,
-        "distances": distances,
         "image_path": image_paths,
     }
 
@@ -167,9 +112,6 @@ def _resolve_dataset_paths(data_cfg: DataConfig) -> tuple[Path, Path]:
         )
 
     local_dir = data_cfg.dataset_local_dir / data_cfg.dataset_revision
-    if local_dir.exists():
-        # 同一revisionで別データを使う場合の混在を防ぐ
-        shutil.rmtree(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
     snapshot_download(
         repo_id=data_cfg.dataset_repo_id,
@@ -189,7 +131,6 @@ def build_shifted_rows_from_labels_csv(
     images_dir: str | Path,
     *,
     k: int,
-    drive_state_default: str,
     class_values: Sequence[int],
 ) -> list[dict[str, str | float | int]]:
     """labels.csv から t -> t+k の行データを作る（split未設定）。"""
@@ -202,7 +143,6 @@ def build_shifted_rows_from_labels_csv(
     base = _build_base_arrays_from_labels_csv(
         labels_csv_path,
         images_dir,
-        drive_state_default=drive_state_default,
     )
 
     n = len(base["steer_us"])
@@ -213,21 +153,15 @@ def build_shifted_rows_from_labels_csv(
     rows: list[dict[str, str | float | int]] = []
     for i in range(m):
         j = i + k
-        sonar = base["distances"][i]
         steer_t = float(base["steer_us"][i])
         row = {
             "timestamp_t": float(base["timestamp"][i]),
             "image_path_t": str(base["image_path"][i]),
-            "drive_state_t": str(base["drive_state"][i]),
-            "sonar_0_t": float(sonar[0]),
-            "sonar_1_t": float(sonar[1]),
-            "sonar_2_t": float(sonar[2]),
-            "sonar_3_t": float(sonar[3]),
-            "sonar_4_t": float(sonar[4]),
             "steer_cls_t": steer_to_class(steer_t, class_values),
-            "throttle_cls_t": throttle_to_class(float(base["throttle_us"][i])),
+            "throttle_us_t": float(base["throttle_us"][i]),
             "timestamp_tk": float(base["timestamp"][j]),
             "steer_cls_tk": steer_to_class(float(base["steer_us"][j]), class_values),
+            "throttle_us_tk": float(base["throttle_us"][j]),
             "k": int(k),
             "split": "",  # 後で埋める
         }
@@ -243,7 +177,6 @@ def export_csv_from_labels(
     k: int = 1,
     val_fraction: float = 0.2,
     seed: int = 42,
-    drive_state_default: str = "READY",
     class_values: Sequence[int],
 ) -> Path:
     """labels.csv からCSVを作る（split列もここで確定させる）。"""
@@ -251,7 +184,6 @@ def export_csv_from_labels(
         labels_csv_path,
         images_dir,
         k=k,
-        drive_state_default=drive_state_default,
         class_values=class_values,
     )
 
@@ -282,67 +214,19 @@ def _load_csv_rows(csv_path: Path) -> list[dict[str, str]]:
 def _sort_rows_by_timestamp(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return sorted(rows, key=lambda r: float(r["timestamp_t"]))
 
-
-def _maybe_ffill_sonar_in_rows(rows: list[dict[str, str]]) -> None:
-    """CSVに -1.0 が残っている場合に備えて前方補完する。"""
-    sonar_cols = [f"sonar_{i}_t" for i in range(5)]
-    last: dict[str, float | None] = {c: None for c in sonar_cols}
-
-    # 先頭欠損を埋めるために平均を計算
-    mean: dict[str, float] = {}
-    for col in sonar_cols:
-        vals = [float(r[col]) for r in rows if float(r[col]) != -1.0]
-        mean[col] = float(np.mean(vals)) if vals else 0.0
-
-    for row in rows:
-        for col in sonar_cols:
-            v = float(row[col])
-            if v == -1.0:
-                fill = last[col] if last[col] is not None else mean[col]
-                row[col] = f"{fill}"
-            else:
-                last[col] = v
-
-
-def _one_hot_with_fixed_order(
-    states: Sequence[str],
-    *,
-    known_order: Sequence[str],
-) -> tuple[np.ndarray, list[str]]:
-    drive_states = list(known_order)
-    index = {s: i for i, s in enumerate(drive_states)}
-
-    unknown = sorted({s for s in states if s not in index})
-    if unknown:
-        print(f"[dataset] unknown drive_state values: {unknown}")
-
-    mat = np.zeros((len(states), len(drive_states)), dtype=np.float32)
-    for row, s in enumerate(states):
-        idx = index.get(s)
-        if idx is not None:
-            mat[row, idx] = 1.0
-    return mat, drive_states
-
-
 def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     """CSVから学習用の配列と正規化統計量を作る。"""
     cfg = Config()
     csv_path = Path(csv_path)
     rows = _load_csv_rows(csv_path)
     rows = _sort_rows_by_timestamp(rows)
-    _maybe_ffill_sonar_in_rows(rows)
 
     image_paths = [r["image_path_t"] for r in rows]
-    drive_state_t = [r["drive_state_t"] for r in rows]
-
-    distances_t = np.array(
-        [[float(r[f"sonar_{i}_t"]) for i in range(5)] for r in rows],
-        dtype=np.float32,
-    )
     steer_cls_t = np.array([int(float(r["steer_cls_t"])) for r in rows], dtype=np.int64)
-    throttle_cls_t = np.array([int(float(r["throttle_cls_t"])) for r in rows], dtype=np.int64)
+    throttle_us_t = np.array([float(r["throttle_us_t"]) for r in rows], dtype=np.float32)
 
     steer_cls_tk = np.array([int(float(r["steer_cls_tk"])) for r in rows], dtype=np.int64)
+    throttle_us_tk = np.array([float(r["throttle_us_tk"]) for r in rows], dtype=np.float32)
 
     split = np.array([r["split"].strip() for r in rows])
     train_mask = split == "train"
@@ -351,66 +235,36 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     if train_mask.sum() == 0 or val_mask.sum() == 0:
         raise ValueError("split列に train/val が十分に含まれていません。CSVを作り直してください。")
 
-    drive_one_hot, drive_states = _one_hot_with_fixed_order(
-        drive_state_t,
-        known_order=cfg.data.drive_state_order,
-    )
-
     steer_class_count = len(cfg.data.servo_class_us)
-    throttle_class_count = 3
-
     steer_one_hot = np.zeros((len(rows), steer_class_count), dtype=np.float32)
     steer_one_hot[np.arange(len(rows)), steer_cls_t] = 1.0
 
-    throttle_one_hot = np.zeros((len(rows), throttle_class_count), dtype=np.float32)
-    throttle_one_hot[np.arange(len(rows)), throttle_cls_t] = 1.0
-
     numeric = np.concatenate(
         [
-            distances_t,
             steer_one_hot,
-            throttle_one_hot,
-            drive_one_hot,
+            throttle_us_t[:, None],
         ],
         axis=1,
     ).astype(np.float32)
 
     numeric_columns = (
-        [
-            "sonar_0_t",
-            "sonar_1_t",
-            "sonar_2_t",
-            "sonar_3_t",
-            "sonar_4_t",
-        ]
-        + [f"steer_cls__{i}" for i in range(steer_class_count)]
-        + [f"throttle_cls__{i}" for i in range(throttle_class_count)]
-        + [f"drive_state__{s}" for s in drive_states]
+        [f"steer_cls__{i}" for i in range(steer_class_count)] + ["throttle_us_t"]
     )
 
-    train_numeric = numeric[train_mask]
     mean = np.zeros(numeric.shape[1], dtype=np.float32)
     std = np.ones(numeric.shape[1], dtype=np.float32)
-
-    # 連続値だけ標準化し、one-hot はそのまま使う
-    cont_dim = 5
-    cont_mean = train_numeric[:, :cont_dim].mean(axis=0)
-    cont_std = train_numeric[:, :cont_dim].std(axis=0)
-    cont_std = np.where(cont_std == 0.0, 1.0, cont_std)
-
-    mean[:cont_dim] = cont_mean
-    std[:cont_dim] = cont_std
-    numeric[:, :cont_dim] = (numeric[:, :cont_dim] - cont_mean) / cont_std
 
     train = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, train_mask) if keep],
         numeric=numeric[train_mask],
         steer_cls_target=steer_cls_tk[train_mask],
+        throttle_us_target=throttle_us_tk[train_mask],
     )
     val = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, val_mask) if keep],
         numeric=numeric[val_mask],
         steer_cls_target=steer_cls_tk[val_mask],
+        throttle_us_target=throttle_us_tk[val_mask],
     )
 
     stats = NormalizationStats(mean=mean, std=std, numeric_columns=numeric_columns)
@@ -418,7 +272,6 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
         train=train,
         val=val,
         numeric_columns=numeric_columns,
-        drive_states=drive_states,
         stats=stats,
     )
 
@@ -435,6 +288,7 @@ class DrivingDataset(Dataset):
         self.image_paths = split.image_paths
         self.numeric = split.numeric
         self.steer_cls_target = split.steer_cls_target
+        self.throttle_us_target = split.throttle_us_target
 
         if image_transform is None:
             image_transform = transforms.Compose(
@@ -453,11 +307,12 @@ class DrivingDataset(Dataset):
             img = img.convert("RGB")
             return self.image_transform(img)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         image = self._load_image(self.image_paths[idx])
         numeric = torch.from_numpy(self.numeric[idx])
         steer_cls_target = torch.tensor(self.steer_cls_target[idx], dtype=torch.long)
-        return image, numeric, steer_cls_target
+        throttle_us_target = torch.tensor(self.throttle_us_target[idx], dtype=torch.float32)
+        return image, numeric, steer_cls_target, throttle_us_target
 
 
 def main() -> None:  # pragma: no cover - CLI entry
@@ -470,7 +325,6 @@ def main() -> None:  # pragma: no cover - CLI entry
         k=cfg.data.k,
         val_fraction=cfg.data.val_fraction,
         seed=cfg.data.seed,
-        drive_state_default=cfg.data.drive_state_default,
         class_values=cfg.data.servo_class_us,
     )
     print(f"wrote csv: {csv_path}")

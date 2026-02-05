@@ -7,19 +7,24 @@
 - ログ: `learning_data/20260127_202651/labels.csv`
 - 画像: `learning_data/20260127_202651/images/*.jpg`
 
+#### labels.csv カラム（現行）
+- `timestamp`（ms）
+- `steer_us`
+- `throttle_us`
+- `image_filename`
+
 #### 入力（X）
 すべて t の値を使う。
 
-- `drive_state(t)`
-- `distances(t)`（ソナー5本）
 - `image(t)`
 - `steer_us(t)`
 - `throttle_us(t)`
 
 #### 出力（y）
-次の時刻 t+1 の操舵クラス。
+次の時刻 t+1 の操舵クラスとスロットル。
 
 - `steer_cls(t+1)`（`steer_us(t+1)` を 3クラスに離散化）
+- `throttle_us(t+1)`（連続値）
 
 #### データ整形方針
 - `k` ステップ先コマンドを予測できるようにする（まずは `k=1`）
@@ -30,16 +35,11 @@
 
 - `timestamp_t`
 - `image_path_t`
-- `drive_state_t`
-- `sonar_0_t`
-- `sonar_1_t`
-- `sonar_2_t`
-- `sonar_3_t`
-- `sonar_4_t`
 - `steer_cls_t`
-- `throttle_cls_t`
+- `throttle_us_t`
 - `timestamp_tk`
 - `steer_cls_tk`
+- `throttle_us_tk`
 - `k`
 - `split`（`train` / `val`）
 
@@ -82,16 +82,10 @@
 
 ### 数値特徴の正規化まとめ
 
-- **ソナー値**（`sonar_0_t` 〜 `sonar_4_t`）
-    - `-1.0` は欠損として扱い、前方補完（ffill）で埋める
-    - 置き換えた後、標準化（mean/std）で正規化
-
-- **操舵クラス・スロットル**（`steer_cls_t`, `throttle_cls_t`）
+- **操舵クラス**（`steer_cls_t`）
     - `steer_cls_t` は one-hot 化して入力
-    - `throttle_cls_t` は one-hot 化して入力
-
-- **走行状態**（`drive_state_t`）
-    - one-hotエンコーディング（＝正規化は不要）
+- **スロットル**（`throttle_us_t`）
+    - 連続値のまま入力
 
 ---
 

@@ -74,11 +74,9 @@ def _save_config_json(checkpoint_dir: Path, cfg: Config) -> None:
             "dataset_repo_id": cfg.data.dataset_repo_id,
             "dataset_revision": cfg.data.dataset_revision,
             "dataset_local_dir": str(cfg.data.dataset_local_dir),
-            "drive_state_default": cfg.data.drive_state_default,
             "csv_path": str(cfg.data.csv_path),
             "servo_class_us": list(cfg.data.servo_class_us),
             "servo_class_names": list(cfg.data.servo_class_names),
-            "drive_state_order": list(cfg.data.drive_state_order),
             "k": cfg.data.k,
             "val_fraction": cfg.data.val_fraction,
             "seed": cfg.data.seed,
@@ -117,18 +115,23 @@ def _make_loaders(data_cfg: DataConfig, train_cfg: TrainConfig) -> tuple[DataLoa
 
 def _step(
     model: nn.Module,
-    batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    batch: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     *,
     device: torch.device,
     loss_fn: nn.Module,
+    throttle_loss_fn: nn.Module,
+    lambda_throttle: float,
 ) -> torch.Tensor:
-    image, numeric, steer_cls_t = batch
+    image, numeric, steer_cls_t, throttle_us_t = batch
     image = image.to(device, non_blocking=True)
     numeric = numeric.to(device, non_blocking=True)
     steer_cls_t = steer_cls_t.to(device, non_blocking=True)
+    throttle_us_t = throttle_us_t.to(device, non_blocking=True)
 
-    steer_logits = model(image, numeric)
-    loss = loss_fn(steer_logits, steer_cls_t)
+    steer_logits, throttle_pred = model(image, numeric)
+    steer_loss = loss_fn(steer_logits, steer_cls_t)
+    throttle_loss = throttle_loss_fn(throttle_pred, throttle_us_t)
+    loss = steer_loss + lambda_throttle * throttle_loss
     return loss
 
 
@@ -138,24 +141,29 @@ def _evaluate(
     *,
     device: torch.device,
     loss_fn: nn.Module,
+    throttle_loss_fn: nn.Module,
 ) -> dict[str, float]:
     model.eval()
 
     total_loss = 0.0
     total_correct = 0
     total_count = 0
+    total_throttle_loss = 0.0
 
     with torch.no_grad():
         for batch in loader:
-            image, numeric, steer_cls_t = batch
+            image, numeric, steer_cls_t, throttle_us_t = batch
             image = image.to(device, non_blocking=True)
             numeric = numeric.to(device, non_blocking=True)
             steer_cls_t = steer_cls_t.to(device, non_blocking=True)
+            throttle_us_t = throttle_us_t.to(device, non_blocking=True)
 
-            steer_logits = model(image, numeric)
+            steer_logits, throttle_pred = model(image, numeric)
             loss = loss_fn(steer_logits, steer_cls_t)
+            throttle_loss = throttle_loss_fn(throttle_pred, throttle_us_t)
 
             total_loss += float(loss.item()) * len(steer_cls_t)
+            total_throttle_loss += float(throttle_loss.item()) * len(steer_cls_t)
 
             preds = steer_logits.argmax(dim=1)
             total_correct += int((preds == steer_cls_t).sum().item())
@@ -164,6 +172,7 @@ def _evaluate(
     return {
         "loss": total_loss / total_count,
         "steer_cls_acc": total_correct / total_count,
+        "throttle_mse": total_throttle_loss / total_count,
     }
 
 
@@ -178,6 +187,7 @@ def train(cfg: Config) -> None:
     model = DrivingModel(numeric_dim=numeric_dim).to(device)
 
     loss_fn = nn.CrossEntropyLoss()
+    throttle_loss_fn = nn.MSELoss()
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -212,11 +222,13 @@ def train(cfg: Config) -> None:
                 batch,
                 device=device,
                 loss_fn=loss_fn,
+                throttle_loss_fn=throttle_loss_fn,
+                lambda_throttle=cfg.train.lambda_move,
             )
             loss.backward()
             optimizer.step()
 
-            image, numeric, steer_cls_t = batch
+            image, numeric, steer_cls_t, throttle_us_t = batch
             bsz = len(steer_cls_t)
             running_loss += float(loss.item()) * bsz
             seen += bsz
@@ -236,11 +248,13 @@ def train(cfg: Config) -> None:
             val_loader,
             device=device,
             loss_fn=loss_fn,
+            throttle_loss_fn=throttle_loss_fn,
         )
         print(
             f"epoch {epoch:02d} val "
             f"loss={val_metrics['loss']:.4f} "
-            f"steer_cls_acc={val_metrics['steer_cls_acc']:.3f}"
+            f"steer_cls_acc={val_metrics['steer_cls_acc']:.3f} "
+            f"throttle_mse={val_metrics['throttle_mse']:.2f}"
         )
 
         epoch_history.append(epoch)
