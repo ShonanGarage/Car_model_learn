@@ -4,7 +4,7 @@ camera: # camera settings
   use_picamera2: true # use Picamera2 backend (true/false)
   img_w: 320 # capture width [px], >= 1
   img_h: 240 # capture height [px], >= 1
-  fps: 10 # frames per second [Hz], > 0
+  fps: 15 # frames per second [Hz], > 0
   jpeg_quality: 85 # JPEG quality [1-100]
 
 servo: # steering servo settings
@@ -34,7 +34,7 @@ sonar: # ultrasonic sensor GPIOs
 
 throttle: # drive motor settings
   gpio: 19 # PWM GPIO pin (BCM)
-  fixed_us: 1630 # forward pulse width [us]
+  fixed_us: 1650 # forward pulse width [us]
   back_us: 1300 # reverse pulse width [us]
   frequency: 100 # PWM frequency [Hz], > 0
   ramp_forward_ratio: 0.3 # forward ramp ratio per tick [0.0-1.0]
@@ -49,13 +49,13 @@ terminal: # keyboard control tuning
   throttle_full_time_s: 0.6 # time to reach full throttle [s], > 0
   throttle_grace_s: 0.5 # throttle grace period [s], >= 0
 
-sonar_timeout_s: 0.03 # sonar read timeout [s], > 0
-sonar_inter_gap_s: 0.008 # gap between sonar triggers [s], >= 0
-sonar_sweep_sleep_s: 0.01 # sonar sweep sleep [s], >= 0
+sonar_timeout_s: 0.02 # sonar read timeout [s], > 0
+sonar_inter_gap_s: 0.006 # gap between sonar triggers [s], >= 0
+sonar_sweep_sleep_s: 0.005 # sonar sweep sleep [s], >= 0
 brake_start_threshold_m: 0.1 # start braking distance [m], >= 0
-emergency_stop_threshold_m: 0.05 # emergency stop distance [m], >= 0
-blocked_threshold_m: 0.05 # blocked distance threshold [m], >= 0
-control_loop_sleep_s: 0.02 # main loop sleep [s], >= 0
-log_hz: 20 # logging frequency [Hz], > 0
+emergency_stop_threshold_m: 0.1 # emergency stop distance [m], >= 0
+blocked_threshold_m: 0.2 # blocked distance threshold [m], >= 0
+control_loop_sleep_s: 0.033 # main loop sleep [s], >= 0
+log_hz: 15 # logging frequency [Hz], > 0
 out_dir: "./learning_data" # output directory (path)
 course_id: "1" # course/run identifier (string)

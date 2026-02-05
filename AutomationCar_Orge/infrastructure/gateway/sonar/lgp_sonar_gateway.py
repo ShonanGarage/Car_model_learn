@@ -16,6 +16,7 @@ class LgpSonarGateway(SonarGatewayInterface):
         for trig, echo in self.trig_echo_pairs:
             self._claim_output(trig)
             self._claim_input(echo)
+            lgpio.gpio_write(self.handle, trig, 0)
 
         # Background thread for continuous reading
         self._last_distances = [-1.0] * len(self.trig_echo_pairs)
@@ -41,7 +42,7 @@ class LgpSonarGateway(SonarGatewayInterface):
                 new_distances.append(dist)
                 time.sleep(self.settings.sonar_inter_gap_s)
             self._last_distances = new_distances
-            time.sleep(0.01) # Small rest between full sweeps
+            time.sleep(self.settings.sonar_sweep_sleep_s)
 
     def _read_single_distance_m(self, trig: int, echo: int) -> float:
         try:
@@ -51,17 +52,17 @@ class LgpSonarGateway(SonarGatewayInterface):
             time.sleep(0.00001)
             lgpio.gpio_write(self.handle, trig, 0)
 
-            t0 = time.time()
+            t0 = time.perf_counter()
             while lgpio.gpio_read(self.handle, echo) == 0:
-                if time.time() - t0 > self.settings.sonar_timeout_s:
+                if time.perf_counter() - t0 > self.settings.sonar_timeout_s:
                     return -1.0
 
-            start = time.time()
+            start = time.perf_counter()
             while lgpio.gpio_read(self.handle, echo) == 1:
-                if time.time() - start > self.settings.sonar_timeout_s:
+                if time.perf_counter() - start > self.settings.sonar_timeout_s:
                     return -1.0
 
-            end = time.time()
+            end = time.perf_counter()
             pulse = end - start
             dist_m = (pulse * 343.0) / 2.0
 
