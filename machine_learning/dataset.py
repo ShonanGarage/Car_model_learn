@@ -80,6 +80,10 @@ def _build_base_arrays_from_labels_csv(
     if not rows:
         raise ValueError(f"CSVが空です: {csv_path}")
 
+    rows = [r for r in rows if r.get("drive_state") != "BLOCKED_FRONT"]
+    if not rows:
+        raise ValueError(f"BLOCKED_FRONT を除外した結果、CSVが空になりました: {csv_path}")
+
     rows = sorted(rows, key=lambda r: float(r["timestamp"]))
 
     timestamps = np.array([float(r["timestamp"]) for r in rows], dtype=np.float64)
