@@ -49,8 +49,8 @@ terminal: # keyboard control tuning
   throttle_full_time_s: 0.6 # time to reach full throttle [s], > 0
   throttle_grace_s: 0.5 # throttle grace period [s], >= 0
 
-sonar_timeout_s: 0.02 # sonar read timeout [s], > 0
-sonar_inter_gap_s: 0.006 # gap between sonar triggers [s], >= 0
+sonar_timeout_s: 0.05 # sonar read timeout [s], > 0
+sonar_inter_gap_s: 0.02 # gap between sonar triggers [s], >= 0
 sonar_sweep_sleep_s: 0.005 # sonar sweep sleep [s], >= 0
 brake_start_threshold_m: 0.1 # start braking distance [m], >= 0
 emergency_stop_threshold_m: 0.1 # emergency stop distance [m], >= 0
