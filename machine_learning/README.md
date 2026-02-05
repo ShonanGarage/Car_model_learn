@@ -50,11 +50,8 @@
 ## モデル
 
 #### 画像特徴
-- 画像サイズ: `320x240 -> 160x120` にダウンサンプリング
-- バックボーン: MobileNetV3-Small
+- バックボーン: 軽量CNN（畳み込みブロック + GAP）
 - 画像埋め込み次元: 128
-- 事前学習重み: 使う
-- 凍結（freeze）: しない（全体を微調整する）
 
 #### 数値特徴
 - MLPで数値特徴をエンコード
@@ -63,12 +60,15 @@
 
 #### 融合と出力
 - 画像128 + 数値64 を連結
-- 共有MLPのあとに1ヘッド
+- 共有MLPのあとに2ヘッド
 - steerヘッド: `steer_cls(t+k)` の3クラス分類
+- throttleヘッド: `throttle_us(t+k)` の回帰
 - Dropout: 0.1〜0.3
 
-#### 損失関数（初期案）
+#### 損失関数
 - steer（分類）: CrossEntropyLoss
+- throttle（回帰）: MSELoss
+- 合計: `steer_loss + lambda_move * throttle_loss`
 
 ## データ整形と正規化（初期案）
 「t -> t+k」のずらしと、数値のスケーリングを明示しておく。
@@ -108,4 +108,4 @@ uv run python -m machine_learning.predict
 ```
 
 チェックポイント保存先（デフォルト）:
-- `machine_learning/checkpoints/last.pt`
+- `machine_learning/checkpoints/ver_11_k1/best.pt`
