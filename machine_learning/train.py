@@ -12,7 +12,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from .config import Config, DataConfig, TrainConfig
-from .dataset import DrivingDataset, prepare_data_from_csv
+from .dataset import DrivingDataset, NormalizationStats, prepare_data_from_csv
 from .model import DrivingModel
 
 
@@ -113,7 +113,10 @@ def _save_config_json(checkpoint_dir: Path, cfg: Config) -> None:
     out_path.write_text(json.dumps(data, ensure_ascii=True, indent=2), encoding="utf-8")
 
 
-def _make_loaders(data_cfg: DataConfig, train_cfg: TrainConfig) -> tuple[DataLoader, DataLoader, int]:
+def _make_loaders(
+    data_cfg: DataConfig,
+    train_cfg: TrainConfig,
+) -> tuple[DataLoader, DataLoader, int, NormalizationStats]:
     prepared = prepare_data_from_csv(data_cfg.csv_path)
 
     train_ds = DrivingDataset(
@@ -137,7 +140,7 @@ def _make_loaders(data_cfg: DataConfig, train_cfg: TrainConfig) -> tuple[DataLoa
         num_workers=train_cfg.num_workers,
         pin_memory=torch.cuda.is_available(),
     )
-    return train_loader, val_loader, len(prepared.numeric_columns)
+    return train_loader, val_loader, len(prepared.numeric_columns), prepared.stats
 
 
 def _train_epoch(
@@ -248,7 +251,7 @@ def train(cfg: Config) -> None:
     device = _resolve_device(cfg.train.device)
     print(f"device: {device}")
 
-    train_loader, val_loader, numeric_dim = _make_loaders(cfg.data, cfg.train)
+    train_loader, val_loader, numeric_dim, normalization_stats = _make_loaders(cfg.data, cfg.train)
     print(f"numeric_dim: {numeric_dim}")
     print(f"train batches: {len(train_loader)}, val batches: {len(val_loader)}")
 
@@ -335,6 +338,13 @@ def train(cfg: Config) -> None:
                     "numeric_dim": numeric_dim,
                     "class_names": cfg.data.servo_class_names,
                     "class_values": cfg.data.servo_class_us,
+                    "normalization_stats": {
+                        "mean": normalization_stats.mean.tolist(),
+                        "std": normalization_stats.std.tolist(),
+                        "numeric_columns": list(normalization_stats.numeric_columns),
+                        "throttle_target_mean": float(normalization_stats.throttle_target_mean),
+                        "throttle_target_std": float(normalization_stats.throttle_target_std),
+                    },
                     "config": cfg,
                     "val_metrics": val_metrics,
                 },

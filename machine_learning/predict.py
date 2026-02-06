@@ -29,17 +29,17 @@ def predict_one(cfg: Config) -> None:
     device = _resolve_device(cfg.train.device)
     print(f"device: {device}")
 
-    prepared = prepare_data_from_csv(cfg.data.csv_path)
-    numeric_dim = len(prepared.numeric_columns)
-
     ckpt_path = cfg.train.checkpoint_dir / "best.pt"
     ckpt = _load_checkpoint(ckpt_path, device=device)
+    prepared = prepare_data_from_csv(cfg.data.csv_path)
+    numeric_dim = int(ckpt["numeric_dim"])
     model = DrivingModel(numeric_dim=numeric_dim).to(device)
     model.load_state_dict(ckpt["model_state"])
     model.eval()
 
-    class_names = tuple(ckpt.get("class_names", cfg.data.servo_class_names))
-    class_values = tuple(ckpt.get("class_values", cfg.data.servo_class_us))
+    class_names = tuple(ckpt["class_names"])
+    class_values = tuple(ckpt["class_values"])
+    ckpt_stats = ckpt["normalization_stats"]
 
     # まずは val の先頭サンプルで推論する
     ds = DrivingDataset(prepared.val)
@@ -59,8 +59,8 @@ def predict_one(cfg: Config) -> None:
     target_label = class_names[target_idx] if target_idx < len(class_names) else str(target_idx)
     target_value = class_values[target_idx] if target_idx < len(class_values) else target_idx
 
-    throttle_mean = float(prepared.stats.throttle_target_mean)
-    throttle_std = float(prepared.stats.throttle_target_std)
+    throttle_mean = float(ckpt_stats["throttle_target_mean"])
+    throttle_std = float(ckpt_stats["throttle_target_std"])
     throttle_pred_us = float(throttle_pred.item()) * throttle_std + throttle_mean
     throttle_target_us = float(throttle_us_t.item()) * throttle_std + throttle_mean
 
