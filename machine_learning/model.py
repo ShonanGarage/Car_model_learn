@@ -13,7 +13,7 @@ class DrivingModel(nn.Module):
     - 融合: 連結 -> 共有MLP
     - 出力ヘッド:
       - steer: 3クラス分類（サーボ離散値）
-      - throttle: 連続値回帰（throttle_us）
+      - throttle: 2クラス分類（throttle_us < 1500 / >= 1500）
     """
 
     def __init__(self, numeric_dim: int) -> None:
@@ -62,7 +62,7 @@ class DrivingModel(nn.Module):
 
         # 出力ヘッド。
         self.steer_head = nn.Linear(64, 3)
-        self.throttle_head = nn.Linear(64, 1)
+        self.throttle_head = nn.Linear(64, 2)
 
     def forward(self, image: torch.Tensor, numeric: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """順伝播。
@@ -73,7 +73,7 @@ class DrivingModel(nn.Module):
 
         Returns:
             steer_logits: 形状 (B, 3) の分類ロジット
-            throttle_pred: 形状 (B,) の連続値予測
+            throttle_logits: 形状 (B, 2) の分類ロジット
         """
         x_img = self.image_encoder(image)
         x_img = self.image_pool(x_img)
@@ -85,5 +85,5 @@ class DrivingModel(nn.Module):
         x = self.fusion(x)
 
         steer_logits = self.steer_head(x)
-        throttle_pred = self.throttle_head(x).squeeze(-1)
-        return steer_logits, throttle_pred
+        throttle_logits = self.throttle_head(x)
+        return steer_logits, throttle_logits

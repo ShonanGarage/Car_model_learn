@@ -39,14 +39,13 @@ def predict_one(cfg: Config) -> None:
 
     class_names = tuple(ckpt["class_names"])
     class_values = tuple(ckpt["class_values"])
-    ckpt_stats = ckpt["normalization_stats"]
-
+    throttle_class_names = tuple(cfg.data.throttle_class_names)
     # まずは val の先頭サンプルで推論する
     ds = DrivingDataset(prepared.val)
-    image, numeric, steer_cls_t, throttle_us_t = ds[0]
+    image, numeric, steer_cls_t, throttle_cls_t = ds[0]
 
     with torch.no_grad():
-        steer_logits, throttle_pred = model(
+        steer_logits, throttle_logits = model(
             image.unsqueeze(0).to(device),
             numeric.unsqueeze(0).to(device),
         )
@@ -59,15 +58,15 @@ def predict_one(cfg: Config) -> None:
     target_label = class_names[target_idx] if target_idx < len(class_names) else str(target_idx)
     target_value = class_values[target_idx] if target_idx < len(class_values) else target_idx
 
-    throttle_mean = float(ckpt_stats["throttle_target_mean"])
-    throttle_std = float(ckpt_stats["throttle_target_std"])
-    throttle_pred_us = float(throttle_pred.item()) * throttle_std + throttle_mean
-    throttle_target_us = float(throttle_us_t.item()) * throttle_std + throttle_mean
+    throttle_pred_idx = int(throttle_logits.argmax(dim=1).item())
+    throttle_target_idx = int(throttle_cls_t.item())
+    throttle_pred_label = throttle_class_names[throttle_pred_idx]
+    throttle_target_label = throttle_class_names[throttle_target_idx]
 
     print(f"steer_pred: {steer_label} ({steer_value})")
     print(f"steer_target: {target_label} ({target_value})")
-    print(f"throttle_pred(us): {throttle_pred_us:.1f}")
-    print(f"throttle_target(us): {throttle_target_us:.1f}")
+    print(f"throttle_pred: {throttle_pred_label} ({throttle_pred_idx})")
+    print(f"throttle_target: {throttle_target_label} ({throttle_target_idx})")
 
 
 def main() -> None:  # pragma: no cover - script entry

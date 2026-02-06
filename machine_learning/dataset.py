@@ -41,8 +41,6 @@ class NormalizationStats:
     mean: np.ndarray
     std: np.ndarray
     numeric_columns: list[str]
-    throttle_target_mean: float
-    throttle_target_std: float
 
 
 @dataclass(frozen=True)
@@ -50,7 +48,7 @@ class PreparedSplit:
     image_paths: list[str]
     numeric: np.ndarray
     steer_cls_target: np.ndarray
-    throttle_us_target: np.ndarray
+    throttle_cls_target: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -69,6 +67,10 @@ def steer_to_class(steer_us: float, class_values: Sequence[int]) -> int:
         raise ValueError("class_values が空です。")
     diffs = [abs(steer_us - v) for v in class_values]
     return int(diffs.index(min(diffs)))
+
+
+def throttle_to_class(throttle_us: float, threshold_us: float) -> int:
+    return int(throttle_us >= threshold_us)
 
 
 def _build_base_arrays_from_log_csv(
@@ -223,6 +225,9 @@ def _sort_rows_by_timestamp(rows: list[dict[str, str]]) -> list[dict[str, str]]:
 def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     """CSVから学習用の配列と正規化統計量を作る。"""
     cfg = Config()
+    throttle_class_names = tuple(cfg.data.throttle_class_names)
+    if len(throttle_class_names) != 2:
+        raise ValueError("throttle_class_names は2クラスで定義してください。")
     csv_path = Path(csv_path)
     rows = _load_csv_rows(csv_path)
     rows = _sort_rows_by_timestamp(rows)
@@ -235,6 +240,16 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
     throttle_us_tk = np.array([float(r["throttle_us_tk"]) for r in rows], dtype=np.float32)
 
     split = np.array([r["split"].strip() for r in rows])
+
+    # brake/invalid side-effectsを避けるため throttle=0 を除外する
+    keep_mask = (throttle_us_t > 0.0) & (throttle_us_tk > 0.0)
+    image_paths = [p for p, keep in zip(image_paths, keep_mask) if bool(keep)]
+    steer_cls_t = steer_cls_t[keep_mask]
+    throttle_us_t = throttle_us_t[keep_mask]
+    steer_cls_tk = steer_cls_tk[keep_mask]
+    throttle_us_tk = throttle_us_tk[keep_mask]
+    split = split[keep_mask]
+
     train_mask = split == "train"
     val_mask = split == "val"
 
@@ -242,58 +257,45 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
         raise ValueError("split列に train/val が十分に含まれていません。CSVを作り直してください。")
 
     steer_class_count = len(cfg.data.servo_class_us)
-    steer_one_hot = np.zeros((len(rows), steer_class_count), dtype=np.float32)
-    steer_one_hot[np.arange(len(rows)), steer_cls_t] = 1.0
+    steer_one_hot = np.zeros((len(steer_cls_t), steer_class_count), dtype=np.float32)
+    steer_one_hot[np.arange(len(steer_cls_t)), steer_cls_t] = 1.0
+    threshold_us = float(cfg.data.throttle_class_threshold_us)
+    throttle_cls_t = np.array([throttle_to_class(v, threshold_us) for v in throttle_us_t], dtype=np.int64)
+    throttle_cls_tk = np.array([throttle_to_class(v, threshold_us) for v in throttle_us_tk], dtype=np.int64)
+    throttle_class_count = len(throttle_class_names)
+    throttle_one_hot = np.zeros((len(throttle_cls_t), throttle_class_count), dtype=np.float32)
+    throttle_one_hot[np.arange(len(throttle_cls_t)), throttle_cls_t] = 1.0
 
     numeric = np.concatenate(
         [
             steer_one_hot,
-            throttle_us_t[:, None],
+            throttle_one_hot,
         ],
         axis=1,
     ).astype(np.float32)
 
     numeric_columns = (
-        [f"steer_cls__{i}" for i in range(steer_class_count)] + ["throttle_us_t"]
+        [f"steer_cls__{i}" for i in range(steer_class_count)] +
+        [f"throttle_cls__{i}" for i in range(throttle_class_count)]
     )
 
     mean = np.zeros(numeric.shape[1], dtype=np.float32)
     std = np.ones(numeric.shape[1], dtype=np.float32)
-    throttle_idx = len(numeric_columns) - 1
-    throttle_in_mean = float(throttle_us_t[train_mask].mean())
-    throttle_in_std = float(throttle_us_t[train_mask].std())
-    if throttle_in_std < 1e-6:
-        throttle_in_std = 1.0
-    mean[throttle_idx] = throttle_in_mean
-    std[throttle_idx] = throttle_in_std
-    numeric[:, throttle_idx] = (numeric[:, throttle_idx] - mean[throttle_idx]) / std[throttle_idx]
-
-    throttle_target_mean = float(throttle_us_tk[train_mask].mean())
-    throttle_target_std = float(throttle_us_tk[train_mask].std())
-    if throttle_target_std < 1e-6:
-        throttle_target_std = 1.0
-    throttle_us_tk_norm = (throttle_us_tk - throttle_target_mean) / throttle_target_std
 
     train = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, train_mask) if keep],
         numeric=numeric[train_mask],
         steer_cls_target=steer_cls_tk[train_mask],
-        throttle_us_target=throttle_us_tk_norm[train_mask],
+        throttle_cls_target=throttle_cls_tk[train_mask],
     )
     val = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, val_mask) if keep],
         numeric=numeric[val_mask],
         steer_cls_target=steer_cls_tk[val_mask],
-        throttle_us_target=throttle_us_tk_norm[val_mask],
+        throttle_cls_target=throttle_cls_tk[val_mask],
     )
 
-    stats = NormalizationStats(
-        mean=mean,
-        std=std,
-        numeric_columns=numeric_columns,
-        throttle_target_mean=throttle_target_mean,
-        throttle_target_std=throttle_target_std,
-    )
+    stats = NormalizationStats(mean=mean, std=std, numeric_columns=numeric_columns)
     return PreparedData(
         train=train,
         val=val,
@@ -314,7 +316,7 @@ class DrivingDataset(Dataset):
         self.image_paths = split.image_paths
         self.numeric = split.numeric
         self.steer_cls_target = split.steer_cls_target
-        self.throttle_us_target = split.throttle_us_target
+        self.throttle_cls_target = split.throttle_cls_target
 
         if image_transform is None:
             image_transform = transforms.Compose(
@@ -337,8 +339,8 @@ class DrivingDataset(Dataset):
         image = self._load_image(self.image_paths[idx])
         numeric = torch.from_numpy(self.numeric[idx])
         steer_cls_target = torch.tensor(self.steer_cls_target[idx], dtype=torch.long)
-        throttle_us_target = torch.tensor(self.throttle_us_target[idx], dtype=torch.float32)
-        return image, numeric, steer_cls_target, throttle_us_target
+        throttle_cls_target = torch.tensor(self.throttle_cls_target[idx], dtype=torch.long)
+        return image, numeric, steer_cls_target, throttle_cls_target
 
 
 def main() -> None:  # pragma: no cover - CLI entry

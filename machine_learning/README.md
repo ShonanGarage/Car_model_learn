@@ -68,7 +68,7 @@
 #### 損失関数
 - steer（分類）: CrossEntropyLoss
 - throttle（回帰）: MSELoss
-- 合計: `steer_loss + lambda_move * throttle_loss`
+- 合計: `steer_loss + lambda_throttle * throttle_loss`
 
 ## データ整形と正規化（初期案）
 「t -> t+k」のずらしと、数値のスケーリングを明示しておく。
