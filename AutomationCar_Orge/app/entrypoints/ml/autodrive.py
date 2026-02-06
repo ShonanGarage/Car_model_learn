@@ -22,7 +22,6 @@ from machine_learning.dataset import (
     IMAGENET_STD,
     prepare_data_from_csv,
     steer_to_class,
-    throttle_to_class,
 )
 from machine_learning.model import DrivingModel  # noqa: E402
 from app.entrypoints.ml.config import MlRunConfig  # noqa: E402
@@ -39,39 +38,21 @@ def _resolve_device(device: str) -> torch.device:
 
 def _build_numeric(
     *,
-    distances: list[float],
     steer_us: float,
     throttle_us: float,
-    drive_state: str,
     class_values: tuple[int, ...],
-    drive_state_order: tuple[str, ...],
-    mean: np.ndarray,
-    std: np.ndarray,
 ) -> np.ndarray:
     steer_cls = steer_to_class(steer_us, class_values)
-    throttle_cls = throttle_to_class(throttle_us)
 
     steer_one_hot = np.zeros(len(class_values), dtype=np.float32)
     steer_one_hot[steer_cls] = 1.0
 
-    throttle_one_hot = np.zeros(3, dtype=np.float32)
-    throttle_one_hot[throttle_cls] = 1.0
-
-    drive_one_hot = np.zeros(len(drive_state_order), dtype=np.float32)
-    if drive_state in drive_state_order:
-        drive_one_hot[drive_state_order.index(drive_state)] = 1.0
-
     numeric = np.concatenate(
         [
-            np.array(distances, dtype=np.float32),
             steer_one_hot,
-            throttle_one_hot,
-            drive_one_hot,
+            np.array([throttle_us], dtype=np.float32),
         ]
     ).astype(np.float32)
-
-    cont_dim = 5
-    numeric[:cont_dim] = (numeric[:cont_dim] - mean[:cont_dim]) / std[:cont_dim]
     return numeric
 
 
@@ -120,7 +101,7 @@ def main() -> None:
             loop_start = time.time()
             container.drive_service.update()
 
-            distances, ok, frame = container.drive_service.get_sensor_snapshot()
+            _, ok, frame = container.drive_service.get_sensor_snapshot()
             if not ok or frame is None:
                 container.drive_service.stop()
                 print("[ml][warn] camera not ok -> stop")
@@ -130,18 +111,13 @@ def main() -> None:
             try:
                 image = _to_tensor(frame, image_transform)
                 numeric = _build_numeric(
-                    distances=distances,
                     steer_us=float(container.drive_service.current_steer_us),
                     throttle_us=float(container.drive_service.current.throttle.value),
-                    drive_state=container.drive_service.state.name,
                     class_values=class_values,
-                    drive_state_order=MlConfig().data.drive_state_order,
-                    mean=prepared.stats.mean,
-                    std=prepared.stats.std,
                 )
 
                 with torch.no_grad():
-                    steer_logits = model(
+                    steer_logits, throttle_pred = model(
                         image.unsqueeze(0).to(device),
                         torch.from_numpy(numeric).unsqueeze(0).to(device),
                     )
@@ -149,10 +125,15 @@ def main() -> None:
                 steer_idx = int(steer_logits.argmax(dim=1).item())
                 steer_value = class_values[steer_idx]
                 steer_label = class_names[steer_idx] if steer_idx < len(class_names) else str(steer_idx)
+                throttle_value = float(throttle_pred.item())
+                if throttle_value < 1000:
+                    throttle_us = 0
+                else:
+                    throttle_us = int(np.clip(throttle_value, 1000, 2000))
 
-                container.drive_service.move_forward()
+                container.drive_service.set_throttle_us(throttle_us)
                 container.drive_service.set_steer_us(int(steer_value))
-                print(f"[ml] steer={steer_label} ({steer_value})")
+                print(f"[ml] steer={steer_label} ({steer_value}) throttle={throttle_us}")
             except Exception as exc:
                 container.drive_service.stop()
                 print(f"[ml][error] inference failed -> stop: {exc}")
