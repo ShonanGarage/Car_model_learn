@@ -59,10 +59,15 @@ def predict_one(cfg: Config) -> None:
     target_label = class_names[target_idx] if target_idx < len(class_names) else str(target_idx)
     target_value = class_values[target_idx] if target_idx < len(class_values) else target_idx
 
+    throttle_mean = float(prepared.stats.throttle_target_mean)
+    throttle_std = float(prepared.stats.throttle_target_std)
+    throttle_pred_us = float(throttle_pred.item()) * throttle_std + throttle_mean
+    throttle_target_us = float(throttle_us_t.item()) * throttle_std + throttle_mean
+
     print(f"steer_pred: {steer_label} ({steer_value})")
     print(f"steer_target: {target_label} ({target_value})")
-    print(f"throttle_pred: {float(throttle_pred.item()):.1f}")
-    print(f"throttle_target: {float(throttle_us_t.item()):.1f}")
+    print(f"throttle_pred(us): {throttle_pred_us:.1f}")
+    print(f"throttle_target(us): {throttle_target_us:.1f}")
 
 
 def main() -> None:  # pragma: no cover - script entry

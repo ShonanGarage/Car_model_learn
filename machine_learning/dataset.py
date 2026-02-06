@@ -41,6 +41,8 @@ class NormalizationStats:
     mean: np.ndarray
     std: np.ndarray
     numeric_columns: list[str]
+    throttle_target_mean: float
+    throttle_target_std: float
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,7 @@ def steer_to_class(steer_us: float, class_values: Sequence[int]) -> int:
     return int(diffs.index(min(diffs)))
 
 
-def _build_base_arrays_from_labels_csv(
+def _build_base_arrays_from_log_csv(
     csv_path: Path,
     images_dir: Path,
 ) -> dict[str, np.ndarray | list[str]]:
@@ -125,27 +127,27 @@ def _resolve_dataset_paths(data_cfg: DataConfig) -> tuple[Path, Path]:
         local_dir_use_symlinks=False,
     )
     repo_root = Path(local_dir)
-    labels_csv_path = repo_root / "labels.csv"
+    log_csv_path = repo_root / "log.csv"
     images_dir = repo_root / "images"
-    return labels_csv_path, images_dir
+    return log_csv_path, images_dir
 
 
-def build_shifted_rows_from_labels_csv(
-    labels_csv_path: str | Path,
+def build_shifted_rows_from_log_csv(
+    log_csv_path: str | Path,
     images_dir: str | Path,
     *,
     k: int,
     class_values: Sequence[int],
 ) -> list[dict[str, str | float | int]]:
-    """labels.csv から t -> t+k の行データを作る（split未設定）。"""
+    """log.csv から t -> t+k の行データを作る（split未設定）。"""
     if k < 1:
         raise ValueError("k は 1 以上である必要があります。")
 
-    labels_csv_path = Path(labels_csv_path)
+    log_csv_path = Path(log_csv_path)
     images_dir = Path(images_dir)
 
-    base = _build_base_arrays_from_labels_csv(
-        labels_csv_path,
+    base = _build_base_arrays_from_log_csv(
+        log_csv_path,
         images_dir,
     )
 
@@ -173,8 +175,8 @@ def build_shifted_rows_from_labels_csv(
     return rows
 
 
-def export_csv_from_labels(
-    labels_csv_path: str | Path,
+def export_csv_from_log(
+    log_csv_path: str | Path,
     images_dir: str | Path,
     csv_path: str | Path,
     *,
@@ -183,9 +185,9 @@ def export_csv_from_labels(
     seed: int = 42,
     class_values: Sequence[int],
 ) -> Path:
-    """labels.csv からCSVを作る（split列もここで確定させる）。"""
-    rows = build_shifted_rows_from_labels_csv(
-        labels_csv_path,
+    """log.csv からCSVを作る（split列もここで確定させる）。"""
+    rows = build_shifted_rows_from_log_csv(
+        log_csv_path,
         images_dir,
         k=k,
         class_values=class_values,
@@ -257,21 +259,41 @@ def prepare_data_from_csv(csv_path: str | Path) -> PreparedData:
 
     mean = np.zeros(numeric.shape[1], dtype=np.float32)
     std = np.ones(numeric.shape[1], dtype=np.float32)
+    throttle_idx = len(numeric_columns) - 1
+    throttle_in_mean = float(throttle_us_t[train_mask].mean())
+    throttle_in_std = float(throttle_us_t[train_mask].std())
+    if throttle_in_std < 1e-6:
+        throttle_in_std = 1.0
+    mean[throttle_idx] = throttle_in_mean
+    std[throttle_idx] = throttle_in_std
+    numeric[:, throttle_idx] = (numeric[:, throttle_idx] - mean[throttle_idx]) / std[throttle_idx]
+
+    throttle_target_mean = float(throttle_us_tk[train_mask].mean())
+    throttle_target_std = float(throttle_us_tk[train_mask].std())
+    if throttle_target_std < 1e-6:
+        throttle_target_std = 1.0
+    throttle_us_tk_norm = (throttle_us_tk - throttle_target_mean) / throttle_target_std
 
     train = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, train_mask) if keep],
         numeric=numeric[train_mask],
         steer_cls_target=steer_cls_tk[train_mask],
-        throttle_us_target=throttle_us_tk[train_mask],
+        throttle_us_target=throttle_us_tk_norm[train_mask],
     )
     val = PreparedSplit(
         image_paths=[p for p, keep in zip(image_paths, val_mask) if keep],
         numeric=numeric[val_mask],
         steer_cls_target=steer_cls_tk[val_mask],
-        throttle_us_target=throttle_us_tk[val_mask],
+        throttle_us_target=throttle_us_tk_norm[val_mask],
     )
 
-    stats = NormalizationStats(mean=mean, std=std, numeric_columns=numeric_columns)
+    stats = NormalizationStats(
+        mean=mean,
+        std=std,
+        numeric_columns=numeric_columns,
+        throttle_target_mean=throttle_target_mean,
+        throttle_target_std=throttle_target_std,
+    )
     return PreparedData(
         train=train,
         val=val,
@@ -321,9 +343,9 @@ class DrivingDataset(Dataset):
 
 def main() -> None:  # pragma: no cover - CLI entry
     cfg = Config()
-    labels_csv_path, images_dir = _resolve_dataset_paths(cfg.data)
-    csv_path = export_csv_from_labels(
-        labels_csv_path,
+    log_csv_path, images_dir = _resolve_dataset_paths(cfg.data)
+    csv_path = export_csv_from_log(
+        log_csv_path,
         images_dir,
         cfg.data.csv_path,
         k=cfg.data.k,

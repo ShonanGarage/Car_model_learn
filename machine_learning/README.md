@@ -4,10 +4,10 @@
 現在（t）の観測から、次（t+1）のコマンドを予測する。
 
 #### 使うデータ
-- ログ: `learning_data/20260127_202651/labels.csv`
+- ログ: `learning_data/20260127_202651/log.csv`
 - 画像: `learning_data/20260127_202651/images/*.jpg`
 
-#### labels.csv カラム（現行）
+#### log.csv カラム（現行）
 - `timestamp`（ms）
 - `steer_us`
 - `throttle_us`
