@@ -11,8 +11,15 @@ from torchvision import transforms
 
 from app.container import Container
 
-# Ensure repo root is on sys.path so machine_learning can be imported
-REPO_ROOT = Path(__file__).resolve().parents[5]
+# Ensure workspace root is on sys.path so machine_learning can be imported.
+def _find_repo_root(start: Path) -> Path:
+    for p in [start, *start.parents]:
+        if (p / "machine_learning").is_dir():
+            return p
+    raise RuntimeError("could not locate repo root containing machine_learning/")
+
+
+REPO_ROOT = _find_repo_root(Path(__file__).resolve())
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -20,9 +27,8 @@ from machine_learning.config import Config as MlConfig  # noqa: E402
 from machine_learning.dataset import (
     IMAGENET_MEAN,
     IMAGENET_STD,
-    prepare_data_from_csv,
-    steer_to_class,
     throttle_to_class,
+    steer_to_class,
 )
 from machine_learning.model import DrivingModel  # noqa: E402
 from app.entrypoints.ml.config import MlRunConfig  # noqa: E402
@@ -39,39 +45,27 @@ def _resolve_device(device: str) -> torch.device:
 
 def _build_numeric(
     *,
-    distances: list[float],
     steer_us: float,
     throttle_us: float,
-    drive_state: str,
     class_values: tuple[int, ...],
-    drive_state_order: tuple[str, ...],
-    mean: np.ndarray,
-    std: np.ndarray,
+    throttle_threshold_us: float,
+    throttle_class_count: int,
 ) -> np.ndarray:
     steer_cls = steer_to_class(steer_us, class_values)
-    throttle_cls = throttle_to_class(throttle_us)
+    throttle_cls = throttle_to_class(throttle_us, throttle_threshold_us)
 
     steer_one_hot = np.zeros(len(class_values), dtype=np.float32)
     steer_one_hot[steer_cls] = 1.0
 
-    throttle_one_hot = np.zeros(3, dtype=np.float32)
+    throttle_one_hot = np.zeros(throttle_class_count, dtype=np.float32)
     throttle_one_hot[throttle_cls] = 1.0
-
-    drive_one_hot = np.zeros(len(drive_state_order), dtype=np.float32)
-    if drive_state in drive_state_order:
-        drive_one_hot[drive_state_order.index(drive_state)] = 1.0
 
     numeric = np.concatenate(
         [
-            np.array(distances, dtype=np.float32),
             steer_one_hot,
             throttle_one_hot,
-            drive_one_hot,
         ]
     ).astype(np.float32)
-
-    cont_dim = 5
-    numeric[:cont_dim] = (numeric[:cont_dim] - mean[:cont_dim]) / std[:cont_dim]
     return numeric
 
 
@@ -89,12 +83,21 @@ def main() -> None:
     cfg = MlRunConfig()
     device = _resolve_device(cfg.device)
 
-    prepared = prepare_data_from_csv(cfg.data_csv_path)
-    numeric_dim = len(prepared.numeric_columns)
+    ckpt = torch.load(cfg.checkpoint_path, map_location=device, weights_only=False)
+    ml_cfg = MlConfig().data
+    class_names = tuple(ckpt.get("class_names", ml_cfg.servo_class_names))
+    class_values = tuple(ckpt.get("class_values", ml_cfg.servo_class_us))
+    throttle_class_names = tuple(ml_cfg.throttle_class_names)
+    throttle_threshold_us = float(ml_cfg.throttle_class_threshold_us)
 
-    ckpt = torch.load(cfg.checkpoint_path, map_location=device)
-    class_names = tuple(ckpt.get("class_names", MlConfig().data.servo_class_names))
-    class_values = tuple(ckpt.get("class_values", MlConfig().data.servo_class_us))
+    numeric_dim = int(ckpt["numeric_dim"])
+    expected_numeric_dim = len(class_values) + len(throttle_class_names)
+    if numeric_dim != expected_numeric_dim:
+        raise ValueError(
+            "numeric_dim mismatch: "
+            f"checkpoint={numeric_dim}, expected={expected_numeric_dim} "
+            f"(len(servo_classes)+len(throttle_classes))"
+        )
 
     model = DrivingModel(numeric_dim=numeric_dim).to(device)
     model.load_state_dict(ckpt["model_state"])
@@ -120,7 +123,7 @@ def main() -> None:
             loop_start = time.time()
             container.drive_service.update()
 
-            distances, ok, frame = container.drive_service.get_sensor_snapshot()
+            _, ok, frame = container.drive_service.get_sensor_snapshot()
             if not ok or frame is None:
                 container.drive_service.stop()
                 print("[ml][warn] camera not ok -> stop")
@@ -130,18 +133,15 @@ def main() -> None:
             try:
                 image = _to_tensor(frame, image_transform)
                 numeric = _build_numeric(
-                    distances=distances,
                     steer_us=float(container.drive_service.current_steer_us),
                     throttle_us=float(container.drive_service.current.throttle.value),
-                    drive_state=container.drive_service.state.name,
                     class_values=class_values,
-                    drive_state_order=MlConfig().data.drive_state_order,
-                    mean=prepared.stats.mean,
-                    std=prepared.stats.std,
+                    throttle_threshold_us=throttle_threshold_us,
+                    throttle_class_count=len(throttle_class_names),
                 )
 
                 with torch.no_grad():
-                    steer_logits = model(
+                    steer_logits, throttle_logits = model(
                         image.unsqueeze(0).to(device),
                         torch.from_numpy(numeric).unsqueeze(0).to(device),
                     )
@@ -149,10 +149,20 @@ def main() -> None:
                 steer_idx = int(steer_logits.argmax(dim=1).item())
                 steer_value = class_values[steer_idx]
                 steer_label = class_names[steer_idx] if steer_idx < len(class_names) else str(steer_idx)
+                throttle_idx = int(throttle_logits.argmax(dim=1).item())
+                throttle_label = (
+                    throttle_class_names[throttle_idx]
+                    if throttle_idx < len(throttle_class_names)
+                    else str(throttle_idx)
+                )
+                throttle_us = cfg.throttle_low_us if throttle_idx == 0 else cfg.throttle_high_us
 
-                container.drive_service.move_forward()
+                container.drive_service.set_throttle_us(throttle_us)
                 container.drive_service.set_steer_us(int(steer_value))
-                print(f"[ml] steer={steer_label} ({steer_value})")
+                print(
+                    f"[ml] steer={steer_label} ({steer_value}) "
+                    f"throttle={throttle_label} ({throttle_us})"
+                )
             except Exception as exc:
                 container.drive_service.stop()
                 print(f"[ml][error] inference failed -> stop: {exc}")

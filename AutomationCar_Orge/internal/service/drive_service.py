@@ -130,6 +130,19 @@ class DriveService:
         )
         self.infra.servo_gateway.set_steer(self.motion_vehicle.steer)
 
+    def set_throttle_us(self, throttle_us: int) -> None:
+        distances = self._get_distances()
+        sonar_frame = self._build_sonar_frame(distances)
+        self.motion_vehicle = self.motion_vehicle.apply(
+            sonar_frame,
+            throttle_us=throttle_us,
+            steer_us=self.motion_vehicle.steer.value,
+            safety_rules=self.safety_rules,
+            allow_reverse=True,
+        )
+        self.infra.dc_gateway.set_throttle(self.motion_vehicle.throttle)
+        self._log_telemetry()
+
     def apply_control_input(self, input_state: ControlInput, now: float | None = None) -> None:
         decision = self.control_policy.evaluate(
             input_state=input_state,
