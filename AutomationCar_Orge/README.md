@@ -79,7 +79,7 @@ pip install opencv-python lgpio
    uv run python -m app.entrypoints.ml.autodrive
    ```
 
-   - `app/entrypoints/ml/config.py` で `checkpoint_path` と `data_csv_path` を指定します。
+   - `app/entrypoints/ml/config.py` で `checkpoint_path` と推論時の throttle 出力値（`throttle_low_us` / `throttle_high_us`）を指定します。
    - 10Hzで推論し、推論失敗やカメラNG時は停止します。
 
 ## ユニットテスト

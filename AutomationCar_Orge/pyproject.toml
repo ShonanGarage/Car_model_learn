@@ -11,6 +11,8 @@ dependencies = [
     "opencv-python>=4.13.0.90",
     "picamera2>=0.3.33",
     "pyyaml>=6.0.3",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
     "uvicorn>=0.40.0",
     "websockets>=16.0",
 ]
