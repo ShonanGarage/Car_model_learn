@@ -9,14 +9,14 @@ class DataConfig:
     dataset_repo_id: str = "ShonanGarage/Automation_Car_Dataset"
     dataset_revision: str = "main"
     dataset_local_dir: Path = Path("machine_learning/data/hf_cache")
-    csv_path: Path = Path("machine_learning/data/dataset_0206_k5.csv")
+    csv_path: Path = Path("machine_learning/data/dataset_0207_k20.csv")
     # Servo 3-class labels (order matters for class id).
     servo_class_us: tuple[int, ...] = (1100, 1500, 1900)
     servo_class_names: tuple[str, ...] = ("LEFT", "STRAIGHT", "RIGHT")
     # Throttle binary labels: < threshold -> class 0, >= threshold -> class 1
     throttle_class_threshold_us: float = 1500.0
     throttle_class_names: tuple[str, ...] = ("LOW", "HIGH")
-    k: int = 5
+    k: int = 20
     val_fraction: float = 0.2
     seed: int = 42
 
@@ -31,7 +31,7 @@ class TrainConfig:
     num_workers: int = 6
     device: str = "auto"
     log_every: int = 20
-    checkpoint_dir: Path = Path("machine_learning/checkpoints/ver_18_k5")
+    checkpoint_dir: Path = Path("machine_learning/checkpoints/ver_20_k20")
 
 
 @dataclass(frozen=True)
